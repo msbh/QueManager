@@ -18,7 +18,7 @@ npm install react-dom react-native-web
 npm install react-dom@18.3.1 react-native-web
 npm install react-dom react-native-web --legacy-peer-deps
 
-# then i got blank screen so i ran this command
+# then i got blank screen so i ran this command and expo\src\launch\registerRootComponent.tsx"
 
 npm install react-native-web
 
