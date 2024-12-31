@@ -38,3 +38,4 @@ yarn-error.*
 
 firebaseConfig.js
 config.js
+src/firebase/firebaseConfig.js
