@@ -1,6 +1,8 @@
 # QueManager
 
 Que Manager app
+npx create-expo-app --template
+
 npx react-native init QueManager
 npx create-expo-app QueManager
 expo init QueManager
