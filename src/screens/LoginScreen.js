@@ -1,34 +1,53 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Text, TextInput, Button, Card, Title, Provider as PaperProvider } from 'react-native-paper';
-import { useDispatch } from 'react-redux';
-import { collection, getDocs } from 'firebase/firestore';
-import { db } from '../firebase/firebaseConfig'; // Import Firestore
+import { getAuth, signInWithEmailAndPassword } from 'firebase/auth'; // Firebase Authentication
+import { collection, getDocs, query, where } from 'firebase/firestore'; // Firestore
+import { db } from '../firebase/firebaseConfig'; // Firestore config
 import theme from '../theme/theme'; // Import the shared theme
 
 const LoginScreen = ({ navigation }) => {
-    const [username, setUsername] = useState('');
+    const [username, setUsername] = useState(''); // Mobile number as username
     const [password, setPassword] = useState('');
-    const [users, setUsers] = useState([]);
-    const dispatch = useDispatch();
+    const [loading, setLoading] = useState(false);
+    const [userData, setUserData] = useState(null); // Store the user data after login
+// Temporary hardcoded user data for login
 
-    useEffect(() => {
-        const fetchUsers = async () => {
-            const querySnapshot = await getDocs(collection(db, 'users'));
-            const usersList = querySnapshot.docs.map(doc => doc.data());
-            setUsers(usersList);
-        };
+const hardcodedUsers = [
+    { username: '1234567890', password: 'password123', userType: 'generalUser', fullName: 'John Doe' },
+    { username: '0987654321', password: 'password456', userType: 'receptionist', fullName: 'Jane Smith' },
+];
+    const handleLogin = async () => {
+        setLoading(true); // Start loading state
+        const auth = getAuth();
 
-        fetchUsers();
-    }, []);
+        try {
+            // Attempt to sign in with mobile number (as email) and password
+            const userCredential = await signInWithEmailAndPassword(auth, username, password);
+            //const user = userCredential.user;
+            const user = hardcodedUsers.find(
+                (user) => user.username === username && user.password === password
+            );
+    
+            console.log('User logged in:', user);
 
-    const handleLogin = () => {
-        const user = users.find(user => user.username === username && user.password === password);
-        if (user) {
-            dispatch({ type: 'SET_USER', payload: user });
+            // Now fetch additional user details from Firestore based on UID
+            const q = query(collection(db, 'users'), where('uid', '==', user.uid));
+            const querySnapshot = await getDocs(q);
+
+            if (!querySnapshot.empty) {
+                const userDoc = querySnapshot.docs[0].data();
+                setUserData(userDoc); // Store user data
+                console.log('User Data from Firestore:', userDoc);
+            }
+
+            // Navigate to User Dashboard
             navigation.navigate('UserDashboard');
-        } else {
-            alert('Invalid credentials');
+        } catch (error) {
+            console.error('Error logging in:', error);
+            alert('Invalid credentials, please try again');
+        } finally {
+            setLoading(false); // End loading state
         }
     };
 
@@ -38,13 +57,18 @@ const LoginScreen = ({ navigation }) => {
                 <Card style={styles.card}>
                     <Card.Content>
                         <Title style={styles.title}>Login</Title>
+
+                        {/* Username (Mobile Number) */}
                         <TextInput
-                            label="Username"
+                            label="Mobile Number"
                             value={username}
                             onChangeText={setUsername}
+                            keyboardType="phone-pad"
                             style={styles.input}
                             theme={{ colors: { primary: theme.colors.primary } }}
                         />
+
+                        {/* Password */}
                         <TextInput
                             label="Password"
                             value={password}
@@ -53,11 +77,24 @@ const LoginScreen = ({ navigation }) => {
                             style={styles.input}
                             theme={{ colors: { primary: theme.colors.primary } }}
                         />
-                        <Button mode="contained" onPress={handleLogin} style={styles.button}>
+
+                        {/* Login Button */}
+                        <Button
+                            mode="contained"
+                            onPress={handleLogin}
+                            style={styles.button}
+                            loading={loading} // Show loading spinner when logging in
+                        >
                             Login
                         </Button>
-                        <Button mode="text" onPress={() => navigation.navigate('RegistrationScreen')} style={styles.registerButton}>
-                            Register
+
+                        {/* Register Button */}
+                        <Button
+                            mode="text"
+                            onPress={() => navigation.navigate('RegistrationScreen')}
+                            style={styles.registerButton}
+                        >
+                            Don't have an account? Register
                         </Button>
                     </Card.Content>
                 </Card>
