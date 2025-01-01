@@ -1,33 +1,132 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
-import { Text, TextInput, Button, Card, Title, Provider as PaperProvider, RadioButton, Menu } from 'react-native-paper';
+import { Text, TextInput, Button, Card, Title, Provider as PaperProvider, RadioButton, Snackbar } from 'react-native-paper';
 import { useDispatch } from 'react-redux';
 import { collection, addDoc } from 'firebase/firestore';
 import { db } from '../firebase/firebaseConfig'; // Import Firestore
+import { getAuth, createUserWithEmailAndPassword, signInWithPhoneNumber, RecaptchaVerifier } from 'firebase/auth'; // Firebase Authentication
 import theme from '../theme/theme'; // Import the shared theme
-
-const organizationTypes = [
-    'Restaurant', 'Clinic', 'Bank', 'Pharmacy', 'Educational Institute', 'Government Offices', 'Museum', 'Theme Park', 'Ticket Counter', 'Call Center', 'Service Centers', 'GYM', 'Events', 'Hotels', 'Salons and Spa'
-];
+import { parsePhoneNumber } from 'libphonenumber-js';
 
 const RegistrationScreen = ({ navigation }) => {
     const [username, setUsername] = useState('');
-    const [password, setPassword] = useState('');
-    const [userType, setUserType] = useState('generalUser');
-    const [mobileNumber, setMobileNumber] = useState('');
     const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [mobileNumber, setMobileNumber] = useState('');
+    const [countryCode, setCountryCode] = useState('+92');
+    const [confirmationCode, setConfirmationCode] = useState('');
+    const [userType, setUserType] = useState('generalUser');
     const [organization, setOrganization] = useState('');
     const [organizationType, setOrganizationType] = useState('');
     const [jobId, setJobId] = useState('');
     const [profession, setProfession] = useState('');
     const [specialization, setSpecialization] = useState('');
     const [availabilityHours, setAvailabilityHours] = useState('');
-    const [menuVisible, setMenuVisible] = useState(false); // State to manage menu visibility
+    const [recaptchaVerifier, setRecaptchaVerifier] = useState(null); // Firebase reCAPTCHA
+    const [snackbarVisible, setSnackbarVisible] = useState(false);
+    const [snackbarMessage, setSnackbarMessage] = useState('');
     const dispatch = useDispatch();
+    const [otpSent, setOtpSent] = useState(false);
 
-    const handleRegister = async () => {
-        if (username && password && mobileNumber) {
-            const payload = { username, password, userType, mobileNumber, email };
+    useEffect(() => {
+        // Initialize reCAPTCHA when the component is mounted
+        const verifier = new RecaptchaVerifier(
+            'recaptcha-container',
+            {
+                size: 'invisible',
+                callback: (response) => {
+                    console.log('reCAPTCHA solved', response);
+                },
+                'expired-callback': () => {
+                    console.log('reCAPTCHA expired');
+                }
+            },
+            getAuth()
+        );
+        setRecaptchaVerifier(verifier);
+    }, []);
+
+    // Validate phone number
+    const validatePhoneNumber = (countryCode, mobileNumber) => {
+        try {
+            const phoneNumber = parsePhoneNumber(`+${countryCode}${mobileNumber}`);
+            return phoneNumber.isValid();
+        } catch (error) {
+            return false;
+        }
+    };
+
+    // Send OTP to the mobile number
+    const handleSendOTP = async () => {
+        if (!mobileNumber) {
+            setSnackbarMessage('Please enter your mobile number');
+            setSnackbarVisible(true);
+            return;
+        }
+
+        if (!validatePhoneNumber(countryCode, mobileNumber)) {
+            setSnackbarMessage('Invalid mobile number');
+            setSnackbarVisible(true);
+            return;
+        }
+
+        try {
+            // Send OTP
+            const phoneNumber = `+${countryCode}${mobileNumber}`;
+            const auth = getAuth();
+
+            const confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, recaptchaVerifier);
+            setSnackbarMessage('OTP sent to your phone number');
+            setSnackbarVisible(true);
+
+            // Store confirmation result globally
+            window.confirmationResult = confirmationResult;
+            setOtpSent(true); // Mark OTP as sent
+        } catch (error) {
+            console.error('Error sending OTP:', error);
+            setSnackbarMessage('Failed to send OTP, please try again');
+            setSnackbarVisible(true);
+        }
+    };
+
+    // Verify OTP and complete registration
+    const handleVerifyOTP = async () => {
+        if (!confirmationCode) {
+            setSnackbarMessage('Please enter the OTP');
+            setSnackbarVisible(true);
+            return;
+        }
+
+        try {
+            const result = await window.confirmationResult.confirm(confirmationCode);
+            const user = result.user;
+            setSnackbarMessage('Mobile number verified successfully');
+            setSnackbarVisible(true);
+        } catch (error) {
+            console.error('Error verifying OTP:', error);
+            setSnackbarMessage('OTP verification failed, please try again');
+            setSnackbarVisible(true);
+        }
+    };
+
+    // Register the user with mobile number and password
+    const handleMobileAndPasswordRegistration = async () => {
+        if (!password) {
+            setSnackbarMessage('Please enter a password');
+            setSnackbarVisible(true);
+            return;
+        }
+
+        // Use mobile number as email for authentication
+        const auth = getAuth();
+
+        try {
+            // Register with mobile number (as email) and password
+            const userCredential = await createUserWithEmailAndPassword(auth, mobileNumber, password);
+            const user = userCredential.user;
+
+            // Prepare the user data for Firestore
+            const payload = { username, mobileNumber, countryCode };
             if (userType === 'receptionist') {
                 payload.organization = organization;
                 payload.organizationType = organizationType;
@@ -38,16 +137,20 @@ const RegistrationScreen = ({ navigation }) => {
                 payload.availabilityHours = availabilityHours;
             }
 
-            try {
-                await addDoc(collection(db, 'users'), payload);
-                dispatch({ type: 'REGISTER_USER', payload });
-                navigation.navigate('LoginScreen');
-            } catch (error) {
-                console.error('Error adding document: ', error);
-                alert('Registration failed. Please try again.');
-            }
-        } else {
-            alert('Please fill all required fields');
+            // Add user data to Firestore
+            await addDoc(collection(db, 'users'), payload);
+
+            // Dispatch action to store user info
+            dispatch({ type: 'REGISTER_USER', payload });
+
+            // Navigate to the login screen
+            setSnackbarMessage('Registration successful');
+            setSnackbarVisible(true);
+            navigation.navigate('LoginScreen');
+        } catch (error) {
+            console.error('Error registering user:', error);
+            setSnackbarMessage('Registration failed. Please try again.');
+            setSnackbarVisible(true);
         }
     };
 
@@ -58,6 +161,8 @@ const RegistrationScreen = ({ navigation }) => {
                     <Card style={styles.card}>
                         <Card.Content>
                             <Title style={styles.title}>Register</Title>
+
+                            {/* Full Name */}
                             <TextInput
                                 label="Full Name"
                                 value={username}
@@ -65,28 +170,54 @@ const RegistrationScreen = ({ navigation }) => {
                                 style={styles.input}
                                 theme={{ colors: { primary: theme.colors.primary } }}
                             />
-                            <TextInput
-                                label="Mobile Number"
-                                value={mobileNumber}
-                                onChangeText={setMobileNumber}
-                                style={styles.input}
-                                theme={{ colors: { primary: theme.colors.primary } }}
-                            />
-                            <TextInput
-                                label="Password"
-                                value={password}
-                                onChangeText={setPassword}
-                                secureTextEntry
-                                style={styles.input}
-                                theme={{ colors: { primary: theme.colors.primary } }}
-                            />
-                            <TextInput
-                                label="Email Address (Optional)"
-                                value={email}
-                                onChangeText={setEmail}
-                                style={styles.input}
-                                theme={{ colors: { primary: theme.colors.primary } }}
-                            />
+
+                            {/* Mobile Number */}
+                            <View style={styles.countryCodeContainer}>
+                                <TextInput
+                                    label="Country Code"
+                                    value={countryCode}
+                                    onChangeText={setCountryCode}
+                                    style={styles.countryCodeInput}
+                                    theme={{ colors: { primary: theme.colors.primary } }}
+                                />
+                                <TextInput
+                                    label="Mobile Number"
+                                    value={mobileNumber}
+                                    onChangeText={setMobileNumber}
+                                    style={styles.input}
+                                    theme={{ colors: { primary: theme.colors.primary } }}
+                                />
+                            </View>
+
+                            {/* OTP Input */}
+                            {otpSent && (
+                                <View>
+                                    <TextInput
+                                        label="Enter OTP"
+                                        value={confirmationCode}
+                                        onChangeText={setConfirmationCode}
+                                        style={styles.input}
+                                        theme={{ colors: { primary: theme.colors.primary } }}
+                                    />
+                                    <Button mode="contained" onPress={handleVerifyOTP} style={styles.button}>
+                                        Verify OTP
+                                    </Button>
+                                </View>
+                            )}
+
+                            {/* Password */}
+                            {!otpSent && (
+                                <TextInput
+                                    label="Password"
+                                    value={password}
+                                    onChangeText={setPassword}
+                                    secureTextEntry
+                                    style={styles.input}
+                                    theme={{ colors: { primary: theme.colors.primary } }}
+                                />
+                            )}
+
+                            {/* User Type Radio Buttons */}
                             <RadioButton.Group onValueChange={newValue => setUserType(newValue)} value={userType}>
                                 <View style={styles.radioContainer}>
                                     <RadioButton value="generalUser" />
@@ -101,74 +232,25 @@ const RegistrationScreen = ({ navigation }) => {
                                     <Text>Doctor/Service Provider</Text>
                                 </View>
                             </RadioButton.Group>
-                            {userType === 'receptionist' && (
-                                <>
-                                    <TextInput
-                                        label="Organization/Business Name"
-                                        value={organization}
-                                        onChangeText={setOrganization}
-                                        style={styles.input}
-                                        theme={{ colors: { primary: theme.colors.primary } }}
-                                    />
-                                    <View>
-                                        <TextInput
-                                            label="Organization Type"
-                                            value={organizationType}
-                                            onFocus={() => setMenuVisible(true)}
-                                            style={styles.input}
-                                            theme={{ colors: { primary: theme.colors.primary } }}
-                                        />
-                                        <Menu
-                                            visible={menuVisible}
-                                            onDismiss={() => setMenuVisible(false)}
-                                            anchor={<TextInput label="Organization Type" value={organizationType} />}
-                                        >
-                                            {organizationTypes.map((type, index) => (
-                                                <Menu.Item key={index} onPress={() => { setOrganizationType(type); setMenuVisible(false); }} title={type} />
-                                            ))}
-                                        </Menu>
-                                    </View>
-                                    <TextInput
-                                        label="Job ID (Optional)"
-                                        value={jobId}
-                                        onChangeText={setJobId}
-                                        style={styles.input}
-                                        theme={{ colors: { primary: theme.colors.primary } }}
-                                    />
-                                </>
+
+                            {/* Buttons */}
+                            {!otpSent ? (
+                                <Button mode="contained" onPress={handleSendOTP} style={styles.button}>
+                                    Send OTP
+                                </Button>
+                            ) : (
+                                <Button mode="contained" onPress={handleMobileAndPasswordRegistration} style={styles.button}>
+                                    Complete Registration
+                                </Button>
                             )}
-                            {userType === 'serviceProvider' && (
-                                <>
-                                    <TextInput
-                                        label="Profession/Title"
-                                        value={profession}
-                                        onChangeText={setProfession}
-                                        style={styles.input}
-                                        theme={{ colors: { primary: theme.colors.primary } }}
-                                    />
-                                    <TextInput
-                                        label="Specialization (Optional)"
-                                        value={specialization}
-                                        onChangeText={setSpecialization}
-                                        style={styles.input}
-                                        theme={{ colors: { primary: theme.colors.primary } }}
-                                    />
-                                    <TextInput
-                                        label="Availability Hours (Optional)"
-                                        value={availabilityHours}
-                                        onChangeText={setAvailabilityHours}
-                                        style={styles.input}
-                                        theme={{ colors: { primary: theme.colors.primary } }}
-                                    />
-                                </>
-                            )}
-                            <Button mode="contained" onPress={handleRegister} style={styles.button}>
-                                Register
-                            </Button>
                         </Card.Content>
                     </Card>
                 </View>
             </ScrollView>
+
+            <Snackbar visible={snackbarVisible} onDismiss={() => setSnackbarVisible(false)} duration={3000}>
+                {snackbarMessage}
+            </Snackbar>
         </PaperProvider>
     );
 };
@@ -176,12 +258,11 @@ const RegistrationScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
     scrollContainer: {
         flexGrow: 1,
+        justifyContent: 'center',
+        padding: 16,
     },
     container: {
         flex: 1,
-        justifyContent: 'center',
-        padding: 16,
-        backgroundColor: theme.colors.background,
     },
     card: {
         padding: 16,
@@ -195,14 +276,22 @@ const styles = StyleSheet.create({
     input: {
         marginBottom: 16,
     },
-    radioContainer: {
+    countryCodeContainer: {
         flexDirection: 'row',
-        alignItems: 'center',
+        justifyContent: 'space-between',
         marginBottom: 16,
+    },
+    countryCodeInput: {
+        width: '30%',
+        marginRight: 8,
     },
     button: {
         marginTop: 16,
-        backgroundColor: theme.colors.primary,
+    },
+    radioContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 8,
     },
 });
 
