@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
 import { Text, TextInput, Button, Card, Title, Provider as PaperProvider, RadioButton, Snackbar } from 'react-native-paper';
 import { useDispatch } from 'react-redux';
 import { collection, addDoc } from 'firebase/firestore';
 import { db } from '../firebase/firebaseConfig'; // Import Firestore
-import { getAuth, createUserWithEmailAndPassword, signInWithPhoneNumber, RecaptchaVerifier } from 'firebase/auth'; // Firebase Authentication
+import { getAuth, createUserWithEmailAndPassword, signInWithPhoneNumber } from 'firebase/auth'; // Firebase Authentication
 import theme from '../theme/theme'; // Import the shared theme
 import { parsePhoneNumber } from 'libphonenumber-js';
 
@@ -22,34 +22,15 @@ const RegistrationScreen = ({ navigation }) => {
     const [profession, setProfession] = useState('');
     const [specialization, setSpecialization] = useState('');
     const [availabilityHours, setAvailabilityHours] = useState('');
-    const [recaptchaVerifier, setRecaptchaVerifier] = useState(null); // Firebase reCAPTCHA
     const [snackbarVisible, setSnackbarVisible] = useState(false);
     const [snackbarMessage, setSnackbarMessage] = useState('');
     const dispatch = useDispatch();
     const [otpSent, setOtpSent] = useState(false);
 
-    useEffect(() => {
-        // Initialize reCAPTCHA when the component is mounted
-        const verifier = new RecaptchaVerifier(
-            'recaptcha-container',
-            {
-                size: 'invisible',
-                callback: (response) => {
-                    console.log('reCAPTCHA solved', response);
-                },
-                'expired-callback': () => {
-                    console.log('reCAPTCHA expired');
-                }
-            },
-            getAuth()
-        );
-        setRecaptchaVerifier(verifier);
-    }, []);
-
     // Validate phone number
     const validatePhoneNumber = (countryCode, mobileNumber) => {
         try {
-            const phoneNumber = parsePhoneNumber(`+${countryCode}${mobileNumber}`);
+            const phoneNumber = parsePhoneNumber(`${countryCode}${mobileNumber}`);
             return phoneNumber.isValid();
         } catch (error) {
             return false;
@@ -71,11 +52,13 @@ const RegistrationScreen = ({ navigation }) => {
         }
 
         try {
+            //temporary send 
+            setOtpSent(true);
             // Send OTP
-            const phoneNumber = `+${countryCode}${mobileNumber}`;
+            const phoneNumber = `${countryCode}${mobileNumber}`;
             const auth = getAuth();
 
-            const confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, recaptchaVerifier);
+            const confirmationResult = await signInWithPhoneNumber(auth, phoneNumber);
             setSnackbarMessage('OTP sent to your phone number');
             setSnackbarVisible(true);
 

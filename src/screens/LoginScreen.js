@@ -11,12 +11,12 @@ const LoginScreen = ({ navigation }) => {
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [userData, setUserData] = useState(null); // Store the user data after login
-// Temporary hardcoded user data for login
+    // Temporary hardcoded user data for login
 
-const hardcodedUsers = [
-    { username: '1234567890', password: 'password123', userType: 'generalUser', fullName: 'John Doe' },
-    { username: '0987654321', password: 'password456', userType: 'receptionist', fullName: 'Jane Smith' },
-];
+    const hardcodedUsers = [
+        { username: '1234567890', password: 'password123', userType: 'generalUser', fullName: 'John Doe' },
+        { username: '0987654321', password: 'password456', userType: 'receptionist', fullName: 'Jane Smith' },
+    ];
     const handleLogin = async () => {
         setLoading(true); // Start loading state
         const auth = getAuth();
@@ -24,11 +24,11 @@ const hardcodedUsers = [
         try {
             // Attempt to sign in with mobile number (as email) and password
             const userCredential = await signInWithEmailAndPassword(auth, username, password);
-            //const user = userCredential.user;
-            const user = hardcodedUsers.find(
-                (user) => user.username === username && user.password === password
-            );
-    
+            const user = userCredential.user;
+            //const user = hardcodedUsers.find(
+            //  (user) => user.username === username && user.password === password
+            //);
+
             console.log('User logged in:', user);
 
             // Now fetch additional user details from Firestore based on UID
@@ -39,10 +39,13 @@ const hardcodedUsers = [
                 const userDoc = querySnapshot.docs[0].data();
                 setUserData(userDoc); // Store user data
                 console.log('User Data from Firestore:', userDoc);
+                // Navigate to User Dashboard
+                navigation.navigate('UserDashboard');
+            }
+            else {
+                alert('User not found ');
             }
 
-            // Navigate to User Dashboard
-            navigation.navigate('UserDashboard');
         } catch (error) {
             console.error('Error logging in:', error);
             alert('Invalid credentials, please try again');
