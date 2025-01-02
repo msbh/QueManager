@@ -3,7 +3,7 @@ import { View, StyleSheet, ScrollView } from 'react-native';
 import { Text, TextInput, Button, Card, Title, Provider as PaperProvider, RadioButton, Snackbar } from 'react-native-paper';
 import { useDispatch } from 'react-redux';
 import { collection, addDoc } from 'firebase/firestore';
-import { getAuth, createUserWithEmailAndPassword, signInWithPhoneNumber,signInWithEmailAndPassword } from 'firebase/auth'; // Firebase Authentication
+import { getAuth, createUserWithEmailAndPassword, signInWithPhoneNumber, signInWithEmailAndPassword } from 'firebase/auth'; // Firebase Authentication
 import theme from '../theme/theme'; // Import the shared theme
 import { parsePhoneNumber } from 'libphonenumber-js';
 import { getFirestore } from 'firebase/firestore';
@@ -68,7 +68,7 @@ const RegistrationScreen = ({ navigation }) => {
             setSnackbarVisible(true);
             setOtpSent(true);  // Mark OTP as sent
             // Store confirmation result globally
-           // window.confirmationResult = confirmationResult;
+            // window.confirmationResult = confirmationResult;
 
         } catch (error) {
             console.error('Error sending OTP:', error);
@@ -85,15 +85,15 @@ const RegistrationScreen = ({ navigation }) => {
             return;
         }
         try {
-        if (confirmationResult) {
-            const result = await confirmationResult.confirm(confirmationCode);
-            const user = result.user;
-            setSnackbarMessage('Mobile number verified successfully');
-            setSnackbarVisible(true);
-        } else {
-            throw new Error('Confirmation result is undefined');
-        }
-  
+            if (confirmationResult) {
+                const result = await confirmationResult.confirm(confirmationCode);
+                const user = result.user;
+                setSnackbarMessage('Mobile number verified successfully');
+                setSnackbarVisible(true);
+            } else {
+                throw new Error('Confirmation result is undefined');
+            }
+
         } catch (error) {
             console.error('Error verifying OTP:', error);
             setSnackbarMessage('OTP verification failed, please try again');
@@ -111,10 +111,10 @@ const RegistrationScreen = ({ navigation }) => {
 
         // Use mobile number as email for authentication
         const auth = getAuth();
-// Create a valid email by appending the mobile number with a domain
+        // Create a valid email by appending the mobile number with a domain
 
-const phoneNumber = `${countryCode}${mobileNumber}`;
-const validEmail = `${phoneNumber}@mobile.com`;
+        const phoneNumber = `${countryCode}${mobileNumber}`;
+        const validEmail = `${phoneNumber}@mobile.com`;
 
         try {
             // Register with mobile number (as email) and password
@@ -133,11 +133,11 @@ const validEmail = `${phoneNumber}@mobile.com`;
                 payload.availabilityHours = availabilityHours;
             }
 
-        // Ensure db is properly initialized
-        const usersCollection = collection(db, 'users');
-        await addDoc(usersCollection, payload);
+            // Ensure db is properly initialized
+            const usersCollection = collection(db, 'users');
+            await addDoc(usersCollection, payload);
 
-        console.log('Payload:', payload);
+            console.log('Payload:', payload);
             // Dispatch action to store user info
             dispatch({ type: 'REGISTER_USER', payload });
 
@@ -150,20 +150,21 @@ const validEmail = `${phoneNumber}@mobile.com`;
                 setSnackbarMessage('Email (mobile number) is already in use. Please log in or use a different number.');
                 setSnackbarVisible(true);
 
-        console.log('Email (mobile number) is already in use:1');
-                   // If the email is already in use, try logging the user in
-            try {
-                await signInWithEmailAndPassword(auth, validEmail, password);
-                
-        console.log('Email (mobile number) is already in use:2', validEmail,password);
-                setSnackbarMessage('Successfully logged in');
-                setSnackbarVisible(true);
-                navigation.navigate('UserDashboard'); // Redirect to HomeScreen or relevant screen
-            } catch (loginError) {
-                console.error('Email (mobile number) is already in use. Error logging in:', loginError);
-                setSnackbarMessage('Email (mobile number) is already in use. Login failed. Please try again.');
-                setSnackbarVisible(true);
-            }
+                console.log('Email (mobile number) is already in use:1');
+                // If the email is already in use, try logging the user in
+                try {
+                    await signInWithEmailAndPassword(auth, validEmail, password);
+
+                    console.log('Email (mobile number) is already in use:2', validEmail, password);
+                    setSnackbarMessage('Successfully logged in');
+                    setSnackbarVisible(true);
+
+                    navigation.navigate('UserDashboard'); // Redirect to HomeScreen or relevant screen
+                } catch (loginError) {
+                    console.error('Email (mobile number) is already in use. Error logging in:', loginError);
+                    setSnackbarMessage('Email (mobile number) is already in use. Login failed. Please try again.');
+                    setSnackbarVisible(true);
+                }
             } else {
                 console.error('Error registering user:', error);
                 setSnackbarMessage('Registration failed. Please try again.');

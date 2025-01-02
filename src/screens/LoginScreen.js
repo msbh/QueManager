@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { TextInput, Button, Card, Title, Provider as PaperProvider } from 'react-native-paper';
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from 'firebase/auth'; // Firebase Authentication
-import { collection, getDocs, query, where } from 'firebase/firestore'; // Firestore
+import { getFirestore, collection, query, where, getDocs } from 'firebase/firestore'; // Firestore
 import theme from '../theme/theme'; // Import the shared theme
-import { getFirestore } from 'firebase/firestore';
 import { useNavigation } from '@react-navigation/native'; // For navigation
+import { Snackbar } from 'react-native-paper';
 
 const LoginScreen = () => {
     const [username, setUsername] = useState(''); // Mobile number as username
@@ -17,13 +17,19 @@ const LoginScreen = () => {
     const auth = getAuth();
     const navigation = useNavigation();  // Using React Navigation for redirection
 
+    const [snackbarVisible, setSnackbarVisible] = useState(false);
+    const [snackbarMessage, setSnackbarMessage] = useState('');
+
     useEffect(() => {
         // Check if user is already logged in when the screen loads
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
             if (user) {
                 // If the user is logged in, fetch user details from Firestore
-                const q = query(collection(db, 'users'), where('uid', '==', user.uid));
+                //const q = query(collection(db, 'users'), where('uid', '==', user.uid));
+                const q = query(collection(db, 'users'), where('email', '==', user.email));
+
                 const querySnapshot = await getDocs(q);
+                console.log(' querySnapshot User Data from Firestore:', querySnapshot);
 
                 if (!querySnapshot.empty) {
                     const userDoc = querySnapshot.docs[0].data();
@@ -33,7 +39,10 @@ const LoginScreen = () => {
                     // Navigate to User Dashboard
                     navigation.navigate('UserDashboard');
                 } else {
-                    alert('User not found in the database');
+                    //alert('User not found in the database');
+                    setSnackbarMessage('User not found in the database');
+                    setSnackbarVisible(true);
+
                 }
             } else {
                 setIsUserLoggedIn(false); // User is not logged in
@@ -50,19 +59,19 @@ const LoginScreen = () => {
         try {
             // Ensure email format is correct (append '@mobile.com' to the username)
             const email = `${username}@mobile.com`;
-    
+
             // Attempt to sign in with mobile number (as email) and password
             const userCredential = await signInWithEmailAndPassword(auth, email, password);
             const user = userCredential.user;
             console.log('User logged in:', user);
-    
+
             // Log the UID for debugging purposes
             console.log('UID from Firebase Authentication:', user.uid);
-    
+
             // Fetch additional user details from Firestore based on UID
             const q = query(collection(db, 'users'), where('uid', '==', user.uid));
             const querySnapshot = await getDocs(q);
-    
+
             if (!querySnapshot.empty) {
                 const userDoc = querySnapshot.docs[0].data();
                 setUserData(userDoc); // Store user data
@@ -71,9 +80,9 @@ const LoginScreen = () => {
                 // Navigate to User Dashboard
                 navigation.navigate('UserDashboard');
             } else {
-                alert('User not found in the database');
+                // alert('User not found in the database');
             }
-    
+
         } catch (error) {
             console.error('Error logging in:', error);
             if (error.code === 'auth/invalid-email') {
@@ -87,11 +96,11 @@ const LoginScreen = () => {
             setLoading(false); // End loading state
         }
     };
-    
+
 
     // If user is already logged in, return null or navigate to Dashboard directly
     if (isUserLoggedIn) {
-        
+
         navigation.navigate('UserDashboard');
         return null; // or `navigation.navigate('UserDashboard')` to prevent rendering login screen
     }
@@ -144,6 +153,10 @@ const LoginScreen = () => {
                     </Card.Content>
                 </Card>
             </View>
+
+            <Snackbar visible={snackbarVisible} onDismiss={() => setSnackbarVisible(false)} duration={3000}>
+                {snackbarMessage}
+            </Snackbar>
         </PaperProvider>
     );
 };
