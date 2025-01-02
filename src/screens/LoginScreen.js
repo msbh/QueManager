@@ -1,58 +1,100 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
-import { Text, TextInput, Button, Card, Title, Provider as PaperProvider } from 'react-native-paper';
-import { getAuth, signInWithEmailAndPassword } from 'firebase/auth'; // Firebase Authentication
+import { TextInput, Button, Card, Title, Provider as PaperProvider } from 'react-native-paper';
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from 'firebase/auth'; // Firebase Authentication
 import { collection, getDocs, query, where } from 'firebase/firestore'; // Firestore
-import { db } from '../firebase/firebaseConfig'; // Firestore config
 import theme from '../theme/theme'; // Import the shared theme
+import { getFirestore } from 'firebase/firestore';
+import { useNavigation } from '@react-navigation/native'; // For navigation
 
-const LoginScreen = ({ navigation }) => {
+const LoginScreen = () => {
     const [username, setUsername] = useState(''); // Mobile number as username
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [userData, setUserData] = useState(null); // Store the user data after login
-    // Temporary hardcoded user data for login
+    const [isUserLoggedIn, setIsUserLoggedIn] = useState(false); // Track login state
+    const db = getFirestore();
+    const auth = getAuth();
+    const navigation = useNavigation();  // Using React Navigation for redirection
 
-    const hardcodedUsers = [
-        { username: '1234567890', password: 'password123', userType: 'generalUser', fullName: 'John Doe' },
-        { username: '0987654321', password: 'password456', userType: 'receptionist', fullName: 'Jane Smith' },
-    ];
+    useEffect(() => {
+        // Check if user is already logged in when the screen loads
+        const unsubscribe = onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                // If the user is logged in, fetch user details from Firestore
+                const q = query(collection(db, 'users'), where('uid', '==', user.uid));
+                const querySnapshot = await getDocs(q);
+
+                if (!querySnapshot.empty) {
+                    const userDoc = querySnapshot.docs[0].data();
+                    setUserData(userDoc); // Store user data
+                    console.log('User Data from Firestore:', userDoc);
+                    setIsUserLoggedIn(true); // User is logged in
+                    // Navigate to User Dashboard
+                    navigation.navigate('UserDashboard');
+                } else {
+                    alert('User not found in the database');
+                }
+            } else {
+                setIsUserLoggedIn(false); // User is not logged in
+            }
+        });
+
+        // Cleanup the listener on component unmount
+        return () => unsubscribe();
+    }, [auth, db, navigation]); // Add necessary dependencies here
+
+    // Handle login
     const handleLogin = async () => {
         setLoading(true); // Start loading state
-        const auth = getAuth();
-
         try {
+            // Ensure email format is correct (append '@mobile.com' to the username)
+            const email = `${username}@mobile.com`;
+    
             // Attempt to sign in with mobile number (as email) and password
-            const userCredential = await signInWithEmailAndPassword(auth, username, password);
+            const userCredential = await signInWithEmailAndPassword(auth, email, password);
             const user = userCredential.user;
-            //const user = hardcodedUsers.find(
-            //  (user) => user.username === username && user.password === password
-            //);
-
             console.log('User logged in:', user);
-
-            // Now fetch additional user details from Firestore based on UID
+    
+            // Log the UID for debugging purposes
+            console.log('UID from Firebase Authentication:', user.uid);
+    
+            // Fetch additional user details from Firestore based on UID
             const q = query(collection(db, 'users'), where('uid', '==', user.uid));
             const querySnapshot = await getDocs(q);
-
+    
             if (!querySnapshot.empty) {
                 const userDoc = querySnapshot.docs[0].data();
                 setUserData(userDoc); // Store user data
                 console.log('User Data from Firestore:', userDoc);
+                setIsUserLoggedIn(true); // User is logged in
                 // Navigate to User Dashboard
                 navigation.navigate('UserDashboard');
+            } else {
+                alert('User not found in the database');
             }
-            else {
-                alert('User not found ');
-            }
-
+    
         } catch (error) {
             console.error('Error logging in:', error);
-            alert('Invalid credentials, please try again');
+            if (error.code === 'auth/invalid-email') {
+                alert('The email address is not valid or has not been registered.');
+            } else if (error.code === 'auth/user-not-found') {
+                alert('No user found with that mobile number.');
+            } else {
+                alert('Invalid credentials, please try again');
+            }
         } finally {
             setLoading(false); // End loading state
         }
     };
+    
+
+    // If user is already logged in, return null or navigate to Dashboard directly
+    if (isUserLoggedIn) {
+        
+        navigation.navigate('UserDashboard');
+        return null; // or `navigation.navigate('UserDashboard')` to prevent rendering login screen
+    }
 
     return (
         <PaperProvider theme={theme}>
