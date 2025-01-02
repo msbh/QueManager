@@ -3,10 +3,12 @@ import { View, StyleSheet, ScrollView } from 'react-native';
 import { Text, TextInput, Button, Card, Title, Provider as PaperProvider, RadioButton, Snackbar } from 'react-native-paper';
 import { useDispatch } from 'react-redux';
 import { collection, addDoc } from 'firebase/firestore';
-import { db } from '../firebase/firebaseConfig'; // Import Firestore
-import { getAuth, createUserWithEmailAndPassword, signInWithPhoneNumber } from 'firebase/auth'; // Firebase Authentication
+import { getAuth, createUserWithEmailAndPassword, signInWithPhoneNumber,signInWithEmailAndPassword } from 'firebase/auth'; // Firebase Authentication
 import theme from '../theme/theme'; // Import the shared theme
 import { parsePhoneNumber } from 'libphonenumber-js';
+import { getFirestore } from 'firebase/firestore';
+
+
 
 const RegistrationScreen = ({ navigation }) => {
     const [username, setUsername] = useState('');
@@ -26,6 +28,8 @@ const RegistrationScreen = ({ navigation }) => {
     const [snackbarMessage, setSnackbarMessage] = useState('');
     const dispatch = useDispatch();
     const [otpSent, setOtpSent] = useState(false);
+    const db = getFirestore();
+    const [confirmationResult, setConfirmationResult] = useState(null);
 
     // Validate phone number
     const validatePhoneNumber = (countryCode, mobileNumber) => {
@@ -59,12 +63,13 @@ const RegistrationScreen = ({ navigation }) => {
             const auth = getAuth();
 
             const confirmationResult = await signInWithPhoneNumber(auth, phoneNumber);
+            setConfirmationResult(confirmationResult);  // Store the result in state
             setSnackbarMessage('OTP sent to your phone number');
             setSnackbarVisible(true);
-
+            setOtpSent(true);  // Mark OTP as sent
             // Store confirmation result globally
-            window.confirmationResult = confirmationResult;
-            setOtpSent(true); // Mark OTP as sent
+           // window.confirmationResult = confirmationResult;
+
         } catch (error) {
             console.error('Error sending OTP:', error);
             setSnackbarMessage('Failed to send OTP, please try again');
@@ -79,12 +84,16 @@ const RegistrationScreen = ({ navigation }) => {
             setSnackbarVisible(true);
             return;
         }
-
         try {
-            const result = await window.confirmationResult.confirm(confirmationCode);
+        if (confirmationResult) {
+            const result = await confirmationResult.confirm(confirmationCode);
             const user = result.user;
             setSnackbarMessage('Mobile number verified successfully');
             setSnackbarVisible(true);
+        } else {
+            throw new Error('Confirmation result is undefined');
+        }
+  
         } catch (error) {
             console.error('Error verifying OTP:', error);
             setSnackbarMessage('OTP verification failed, please try again');
@@ -102,14 +111,18 @@ const RegistrationScreen = ({ navigation }) => {
 
         // Use mobile number as email for authentication
         const auth = getAuth();
+// Create a valid email by appending the mobile number with a domain
+
+const phoneNumber = `${countryCode}${mobileNumber}`;
+const validEmail = `${phoneNumber}@mobile.com`;
 
         try {
             // Register with mobile number (as email) and password
-            const userCredential = await createUserWithEmailAndPassword(auth, mobileNumber, password);
+            const userCredential = await createUserWithEmailAndPassword(auth, validEmail, password);
             const user = userCredential.user;
 
             // Prepare the user data for Firestore
-            const payload = { username, mobileNumber, countryCode };
+            const payload = { username, phoneNumber, countryCode };
             if (userType === 'receptionist') {
                 payload.organization = organization;
                 payload.organizationType = organizationType;
@@ -120,9 +133,11 @@ const RegistrationScreen = ({ navigation }) => {
                 payload.availabilityHours = availabilityHours;
             }
 
-            // Add user data to Firestore
-            await addDoc(collection(db, 'users'), payload);
+        // Ensure db is properly initialized
+        const usersCollection = collection(db, 'users');
+        await addDoc(usersCollection, payload);
 
+        console.log('Payload:', payload);
             // Dispatch action to store user info
             dispatch({ type: 'REGISTER_USER', payload });
 
@@ -131,9 +146,29 @@ const RegistrationScreen = ({ navigation }) => {
             setSnackbarVisible(true);
             navigation.navigate('LoginScreen');
         } catch (error) {
-            console.error('Error registering user:', error);
-            setSnackbarMessage('Registration failed. Please try again.');
-            setSnackbarVisible(true);
+            if (error.code === 'auth/email-already-in-use') {
+                setSnackbarMessage('Email (mobile number) is already in use. Please log in or use a different number.');
+                setSnackbarVisible(true);
+
+        console.log('Email (mobile number) is already in use:1');
+                   // If the email is already in use, try logging the user in
+            try {
+                await signInWithEmailAndPassword(auth, validEmail, password);
+                
+        console.log('Email (mobile number) is already in use:2', validEmail,password);
+                setSnackbarMessage('Successfully logged in');
+                setSnackbarVisible(true);
+                navigation.navigate('UserDashboard'); // Redirect to HomeScreen or relevant screen
+            } catch (loginError) {
+                console.error('Email (mobile number) is already in use. Error logging in:', loginError);
+                setSnackbarMessage('Email (mobile number) is already in use. Login failed. Please try again.');
+                setSnackbarVisible(true);
+            }
+            } else {
+                console.error('Error registering user:', error);
+                setSnackbarMessage('Registration failed. Please try again.');
+                setSnackbarVisible(true);
+            }
         }
     };
 
