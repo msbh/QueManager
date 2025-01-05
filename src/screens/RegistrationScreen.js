@@ -2,11 +2,10 @@ import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
 import { Text, TextInput, Button, Card, Title, Provider as PaperProvider, RadioButton, Snackbar } from 'react-native-paper';
 import { useDispatch } from 'react-redux';
-import { collection, addDoc } from 'firebase/firestore';
+import { addDoc, getFirestore, collection, query, where, getDocs } from 'firebase/firestore';
 import { getAuth, createUserWithEmailAndPassword, signInWithPhoneNumber, signInWithEmailAndPassword } from 'firebase/auth'; // Firebase Authentication
 import theme from '../theme/theme'; // Import the shared theme
 import { parsePhoneNumber } from 'libphonenumber-js';
-import { getFirestore } from 'firebase/firestore';
 
 
 
@@ -40,7 +39,66 @@ const RegistrationScreen = ({ navigation }) => {
             return false;
         }
     };
+    // Add user to DB
+    const AddUserDB = async (user) => {
+        try {
+            console.log('AddUserDB:', user.uid);
+            // Prepare the user data for Firestore
+            const payload = { username, phoneNumber, countryCode };
+            payload.uid = user.uid;
+            payload.email = validEmail;
+            payload.userType = userType;
+            if (userType === 'receptionist') {
+                payload.organization = organization;
+                payload.organizationType = organizationType;
+                payload.jobId = jobId;
+            } else if (userType === 'serviceProvider') {
+                payload.profession = profession;
+                payload.specialization = specialization;
+                payload.availabilityHours = availabilityHours;
+            }
 
+            console.log('AddUserDB 2:', user.uid);
+            // Ensure db is properly initialized
+            const usersCollection = collection(db, 'users');
+            await addDoc(usersCollection, payload);
+
+            console.log('AddUserDB 3:', user.uid);
+            console.log('Payload:', payload);
+            // Dispatch action to store user info
+            dispatch({ type: 'REGISTER_USER', payload });
+            return true;
+        } catch (error) {
+            console.log(' AddUserDB error:', error);
+            return false;
+        }
+    };
+    //get user from DB
+    const GetUserDB = async (user) => {
+        try {
+            console.log('GetUserDB:', user.uid);
+            // Fetch additional user details from Firestore based on UID
+            const q = query(collection(db, 'users'), where('uid', '==', user.uid));
+            const querySnapshot = await getDocs(q);
+
+            console.log('GetUserDB 2:', user.uid);
+            if (!querySnapshot.empty) {
+                const userDoc = querySnapshot.docs[0].data();
+                setUserData(userDoc); // Store user data
+                console.log('User Data from Firestore:', userDoc);
+                setIsUserLoggedIn(true); // User is logged in
+                return true;
+            } else {
+
+                console.log('GetUserDB 3:', user.uid);
+                return false;
+                // alert('User not found in the database');
+            }
+        } catch (error) {
+            console.log('GetUserDB error:', error);
+            return false;
+        }
+    }
     // Send OTP to the mobile number
     const handleSendOTP = async () => {
         if (!mobileNumber) {
@@ -103,6 +161,7 @@ const RegistrationScreen = ({ navigation }) => {
 
     // Register the user with mobile number and password
     const handleMobileAndPasswordRegistration = async () => {
+        debugger;
         if (!password) {
             setSnackbarMessage('Please enter a password');
             setSnackbarVisible(true);
@@ -120,31 +179,18 @@ const RegistrationScreen = ({ navigation }) => {
             // Register with mobile number (as email) and password
             const userCredential = await createUserWithEmailAndPassword(auth, validEmail, password);
             const user = userCredential.user;
+            console.log('User registered:', user);
+            if (AddUserDB(user)) {
 
-            // Prepare the user data for Firestore
-            const payload = { username, phoneNumber, countryCode };
-            if (userType === 'receptionist') {
-                payload.organization = organization;
-                payload.organizationType = organizationType;
-                payload.jobId = jobId;
-            } else if (userType === 'serviceProvider') {
-                payload.profession = profession;
-                payload.specialization = specialization;
-                payload.availabilityHours = availabilityHours;
+                // Navigate to the login screen
+                setSnackbarMessage('Registration successful');
+                setSnackbarVisible(true);
+                navigation.navigate('LoginScreen');
+            } else {
+                // Navigate to the login screen
+                setSnackbarMessage('Registration Failed ');
+                setSnackbarVisible(true);
             }
-
-            // Ensure db is properly initialized
-            const usersCollection = collection(db, 'users');
-            await addDoc(usersCollection, payload);
-
-            console.log('Payload:', payload);
-            // Dispatch action to store user info
-            dispatch({ type: 'REGISTER_USER', payload });
-
-            // Navigate to the login screen
-            setSnackbarMessage('Registration successful');
-            setSnackbarVisible(true);
-            navigation.navigate('LoginScreen');
         } catch (error) {
             if (error.code === 'auth/email-already-in-use') {
                 setSnackbarMessage('Email (mobile number) is already in use. Please log in or use a different number.');
@@ -153,13 +199,28 @@ const RegistrationScreen = ({ navigation }) => {
                 console.log('Email (mobile number) is already in use:1');
                 // If the email is already in use, try logging the user in
                 try {
-                    await signInWithEmailAndPassword(auth, validEmail, password);
+                    const userCredentialGet = await signInWithEmailAndPassword(auth, validEmail, password);
+                    const userGet = userCredentialGet.user;
+                    if (GetUserDB(userGet)) {
+                        setSnackbarMessage('Successfully logged in');
+                        setSnackbarVisible(true);
+                        navigation.navigate('UserDashboard'); // Redirect to HomeScreen or relevant screen
+                    }
+                    else {
+                        if (AddUserDB(user)) {
+                            // Navigate to the login screen
+                            setSnackbarMessage('User Registration successful');
+                            setSnackbarVisible(true);
+                            navigation.navigate('LoginScreen');
+                        } else {
+                            // Navigate to the login screen
+                            setSnackbarMessage('Not Registerd Some error occured');
+                            setSnackbarVisible(true);
+                        }
 
+                    }
                     console.log('Email (mobile number) is already in use:2', validEmail, password);
-                    setSnackbarMessage('Successfully logged in');
-                    setSnackbarVisible(true);
 
-                    navigation.navigate('UserDashboard'); // Redirect to HomeScreen or relevant screen
                 } catch (loginError) {
                     console.error('Email (mobile number) is already in use. Error logging in:', loginError);
                     setSnackbarMessage('Email (mobile number) is already in use. Login failed. Please try again.');
