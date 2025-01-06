@@ -135,7 +135,7 @@ const LoginScreen = () => {
                         {/* Login Button */}
                         <Button
                             mode="contained"
-                            onPress={handleLogin}
+                            onPress={()=>handleLogin()}
                             style={styles.button}
                             loading={loading} // Show loading spinner when logging in
                         >
