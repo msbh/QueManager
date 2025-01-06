@@ -7,8 +7,6 @@ import { getAuth, createUserWithEmailAndPassword, signInWithPhoneNumber, signInW
 import theme from '../theme/theme'; // Import the shared theme
 import { parsePhoneNumber } from 'libphonenumber-js';
 
-
-
 const RegistrationScreen = ({ navigation }) => {
     const [username, setUsername] = useState('');
     const [email, setEmail] = useState('');
@@ -29,7 +27,8 @@ const RegistrationScreen = ({ navigation }) => {
     const [otpSent, setOtpSent] = useState(false);
     const db = getFirestore();
     const [confirmationResult, setConfirmationResult] = useState(null);
-
+    const [userData, setUserData] = useState(null); // Store the user data after login
+    const [isUserLoggedIn, setIsUserLoggedIn] = useState(false); // Track login state
     // Validate phone number
     const validatePhoneNumber = (countryCode, mobileNumber) => {
         try {
@@ -39,14 +38,14 @@ const RegistrationScreen = ({ navigation }) => {
             return false;
         }
     };
-    // Add user to DB
-    const AddUserDB = async (user) => {
+    // Add user to Firestore
+    const AddUserDB = async (user,phoneNumber,userType) => {
         try {
             console.log('AddUserDB:', user.uid);
             // Prepare the user data for Firestore
             const payload = { username, phoneNumber, countryCode };
             payload.uid = user.uid;
-            payload.email = validEmail;
+            payload.email = user.email;
             payload.userType = userType;
             if (userType === 'receptionist') {
                 payload.organization = organization;
@@ -73,17 +72,17 @@ const RegistrationScreen = ({ navigation }) => {
             return false;
         }
     };
-    //get user from DB
+    // Get user from DB
     const GetUserDB = async (user) => {
         try {
             console.log('GetUserDB:', user.uid);
             // Fetch additional user details from Firestore based on UID
-            const q = query(collection(db, 'users'), where('uid', '==', user.uid));
-            const querySnapshot = await getDocs(q);
+            const q2 = query(collection(db, 'users'), where('uid', '==', user.uid));
+            const querySnapshot2 = await getDocs(q2);
 
             console.log('GetUserDB 2:', user.uid);
-            if (!querySnapshot.empty) {
-                const userDoc = querySnapshot.docs[0].data();
+            if (!querySnapshot2.empty) {
+                const userDoc = querySnapshot2.docs[0].data();
                 setUserData(userDoc); // Store user data
                 console.log('User Data from Firestore:', userDoc);
                 setIsUserLoggedIn(true); // User is logged in
@@ -98,7 +97,7 @@ const RegistrationScreen = ({ navigation }) => {
             console.log('GetUserDB error:', error);
             return false;
         }
-    }
+    };
     // Send OTP to the mobile number
     const handleSendOTP = async () => {
         if (!mobileNumber) {
@@ -114,9 +113,9 @@ const RegistrationScreen = ({ navigation }) => {
         }
 
         try {
-            //temporary send 
-            setOtpSent(true);
-            // Send OTP
+           //temporary send 
+           setOtpSent(true);
+           // Send OTP
             const phoneNumber = `${countryCode}${mobileNumber}`;
             const auth = getAuth();
 
@@ -148,6 +147,9 @@ const RegistrationScreen = ({ navigation }) => {
                 const user = result.user;
                 setSnackbarMessage('Mobile number verified successfully');
                 setSnackbarVisible(true);
+
+                // Proceed with user registration after OTP verification
+                handleMobileAndPasswordRegistration(user);
             } else {
                 throw new Error('Confirmation result is undefined');
             }
@@ -160,7 +162,7 @@ const RegistrationScreen = ({ navigation }) => {
     };
 
     // Register the user with mobile number and password
-    const handleMobileAndPasswordRegistration = async () => {
+    const handleMobileAndPasswordRegistration = async (user) => {
         debugger;
         if (!password) {
             setSnackbarMessage('Please enter a password');
@@ -168,26 +170,28 @@ const RegistrationScreen = ({ navigation }) => {
             return;
         }
 
-        // Use mobile number as email for authentication
-        const auth = getAuth();
+
         // Create a valid email by appending the mobile number with a domain
 
         const phoneNumber = `${countryCode}${mobileNumber}`;
-        const validEmail = `${phoneNumber}@mobile.com`;
+        const validEmail = `${phoneNumber}@mobile.com`; // Use phone number as email
 
         try {
             // Register with mobile number (as email) and password
+        	// Use mobile number as email for authentication
+        	const auth = getAuth();
             const userCredential = await createUserWithEmailAndPassword(auth, validEmail, password);
             const user = userCredential.user;
             console.log('User registered:', user);
-            if (AddUserDB(user)) {
+           // Add user to the database after registration
+            const userAdded = await AddUserDB(user, phoneNumber, userType);
+            if (userAdded) {
 
                 // Navigate to the login screen
                 setSnackbarMessage('Registration successful');
                 setSnackbarVisible(true);
                 navigation.navigate('LoginScreen');
             } else {
-                // Navigate to the login screen
                 setSnackbarMessage('Registration Failed ');
                 setSnackbarVisible(true);
             }
@@ -199,15 +203,17 @@ const RegistrationScreen = ({ navigation }) => {
                 console.log('Email (mobile number) is already in use:1');
                 // If the email is already in use, try logging the user in
                 try {
-                    const userCredentialGet = await signInWithEmailAndPassword(auth, validEmail, password);
+                    const userCredentialGet = await signInWithEmailAndPassword(getAuth(), validEmail, password);
                     const userGet = userCredentialGet.user;
-                    if (GetUserDB(userGet)) {
+                    const userFound = await GetUserDB(userGet);
+                    if (userFound) {
                         setSnackbarMessage('Successfully logged in');
                         setSnackbarVisible(true);
                         navigation.navigate('UserDashboard'); // Redirect to HomeScreen or relevant screen
                     }
                     else {
-                        if (AddUserDB(user)) {
+                    const userFound = await AddUserDB(userGet,phoneNumber,userType);
+                    if (userFound) {
                             // Navigate to the login screen
                             setSnackbarMessage('User Registration successful');
                             setSnackbarVisible(true);
