@@ -41,6 +41,17 @@ const RegistrationScreen = ({ navigation }) => {
     // Add user to Firestore
     const AddUserDB = async (user,phoneNumber,userType) => {
         try {
+            // Check if the user is authenticated
+const user = getAuth().currentUser;
+if (user) {
+  console.log('User is signed in');
+} else {
+  console.log('User is not signed in');
+}} catch (error) {
+    console.log(' AddUserDB 2error:', error);
+    
+}
+        try {
             console.log('AddUserDB:', user.uid);
             // Prepare the user data for Firestore
             const payload = { username, phoneNumber, countryCode };
