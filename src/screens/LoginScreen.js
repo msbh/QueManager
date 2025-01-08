@@ -20,40 +20,64 @@ const LoginScreen = () => {
     const [snackbarVisible, setSnackbarVisible] = useState(false);
     const [snackbarMessage, setSnackbarMessage] = useState('');
 
-    useEffect(() => {
-        // Check if user is already logged in when the screen loads
-        const unsubscribe = onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                // If the user is logged in, fetch user details from Firestore
-                //const q = query(collection(db, 'users'), where('uid', '==', user.uid));
-                const q = query(collection(db, 'users'), where('email', '==', user.email));
-
-                const querySnapshot = await getDocs(q);
-                console.log(' querySnapshot User Data from Firestore:', querySnapshot);
-
-                if (!querySnapshot.empty) {
-                    const userDoc = querySnapshot.docs[0].data();
-                    setUserData(userDoc); // Store user data
-                    console.log('User Data from Firestore:', userDoc);
-                    setIsUserLoggedIn(true); // User is logged in
-                    // Navigate to User Dashboard
-                    navigation.navigate('UserDashboard');
+        useEffect(() => {
+            // Check if user is already logged in when the screen loads
+            const unsubscribe = onAuthStateChanged(auth, async (user) => {
+                if (user) {
+                    // If the user is logged in, fetch user details from Firestore
+                    const q = query(collection(db, 'users'), where('uid', '==', user.uid));
+                    const querySnapshot = await getDocs(q);
+    
+                    if (!querySnapshot.empty) {
+                        const userDoc = querySnapshot.docs[0].data();
+                        setUserData(userDoc); // Store user data
+                        console.log('User Data from Firestore:', userDoc);
+                        setIsUserLoggedIn(true); // User is logged in
+                        // Navigate to User Dashboard
+                        navigation.navigate('UserDashboard');
+                    } else {
+                        alert('User not found in the database');
+    setIsUserLoggedIn(false); // User is not found
+                    }
                 } else {
-                    //alert('User not found in the database');
-                    setSnackbarMessage('User not found in the database');
-                    setSnackbarVisible(true);
-
+                    setIsUserLoggedIn(false); // User is not logged in
                 }
-            } else {
-                setIsUserLoggedIn(false); // User is not logged in
-            }
-        });
+            });
+    
+            // Cleanup the listener on component unmount
+            return () => unsubscribe();
+        }, [auth, db, navigation]); // Add necessary dependencies here
+    
+    const getUserDb = async (user) => {
 
-        // Cleanup the listener on component unmount
-        return () => unsubscribe();
-    }, [auth, db, navigation]); // Add necessary dependencies here
+        const q = query(collection(db, 'users'), where('uid', '==', user?.uid));
+        console.log(q, 'QQQQQQQQQQQQQQQQQQQQ');
 
-    // Handle login
+        const querySnapshot = await getDocs(q);
+        console.log('querySnapshot', querySnapshot);
+
+        if (querySnapshot?.empty) {
+            alert('User not found in the database');
+
+        } else {
+            alert("Some Record Found");
+
+        }
+
+        if (!querySnapshot?.empty) {
+            const userDoc = querySnapshot.docs[0].data();
+            console.log('User Data from Firestore:', userDoc);
+            setIsUserLoggedIn(true); // User is logged in
+            setUserData(userDoc); // Store user data
+
+            setLoading(false); return true;
+            // navigation.navigate('UserDashboard');
+        } else {
+            alert('User not found in the database');
+            return false;
+        }
+    }   
+      // Handle login
     const handleLogin = async () => {
         setLoading(true); // Start loading state
         try {
@@ -61,28 +85,16 @@ const LoginScreen = () => {
             const email = `${username}@mobile.com`;
 
             // Attempt to sign in with mobile number (as email) and password
-            const userCredential = await signInWithEmailAndPassword(auth, email, password);
-            const user = userCredential.user;
-            console.log('User logged in:', user);
-
-            // Log the UID for debugging purposes
-            console.log('UID from Firebase Authentication:', user.uid);
-
-            // Fetch additional user details from Firestore based on UID
-            const q = query(collection(db, 'users'), where('uid', '==', user.uid));
-            const querySnapshot = await getDocs(q);
-
-            if (!querySnapshot.empty) {
-                const userDoc = querySnapshot.docs[0].data();
-                setUserData(userDoc); // Store user data
-                console.log('User Data from Firestore:', userDoc);
-                setIsUserLoggedIn(true); // User is logged in
-                // Navigate to User Dashboard
-                navigation.navigate('UserDashboard');
-            } else {
-                // alert('User not found in the database');
-            }
-
+            
+            const { user } = await signInWithEmailAndPassword(auth, email, password2);
+            console.log('============================ User logged in:', user.email);
+            console.log('UID from Firebase Authentication:', user?.uid);
+            const userFound = await getUserDb(user);
+            if (userFound) { 
+                console.log('userFounddddddddddddddd=>>>>', userFound);
+                // navigation.navigate('UserDashboard');
+            } else { console.log('userFound', userFound); }
+           
         } catch (error) {
             console.error('Error logging in:', error);
             if (error.code === 'auth/invalid-email') {
@@ -96,7 +108,6 @@ const LoginScreen = () => {
             setLoading(false); // End loading state
         }
     };
-
 
     // If user is already logged in, return null or navigate to Dashboard directly
     if (isUserLoggedIn) {
