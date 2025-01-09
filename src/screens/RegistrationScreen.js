@@ -6,6 +6,7 @@ import { addDoc, getFirestore, collection, query, where, getDocs } from 'firebas
 import { getAuth, createUserWithEmailAndPassword, signInWithPhoneNumber, signInWithEmailAndPassword } from 'firebase/auth'; // Firebase Authentication
 import theme from '../theme/theme'; // Import the shared theme
 import { parsePhoneNumber } from 'libphonenumber-js';
+import { Menu } from 'react-native-paper'; // Import Menu from react-native-paper
 
 const RegistrationScreen = ({ navigation }) => {
     const [username, setUsername] = useState('');
@@ -29,6 +30,26 @@ const RegistrationScreen = ({ navigation }) => {
     const [confirmationResult, setConfirmationResult] = useState(null);
     const [userData, setUserData] = useState(null); // Store the user data after login
     const [isUserLoggedIn, setIsUserLoggedIn] = useState(false); // Track login state
+    const [visible, setVisible] = useState(false); // To control visibility of the dropdown
+
+const organizationTypes = [
+    'Hospitals',
+    'Clinics',
+    'Banks',
+    'Restaurant',
+    'Retail Stores',
+    'Amusement Parks',
+    'Entertainment Venues',
+    'Government Office',
+    'Educational Institutions'
+];
+
+// Function to handle the selection of an organization type
+const handleSelectOrganizationType = (type) => {
+    setOrganizationType(type);
+    setVisible(false); // Close the dropdown after selection
+};
+
     // Validate phone number
     const validatePhoneNumber = (countryCode, mobileNumber) => {
         try {
@@ -41,6 +62,7 @@ const RegistrationScreen = ({ navigation }) => {
     // Add user to Firestore
     const AddUserDB = async (user,phoneNumber,userType) => {
         try {
+            try {
             // Check if the user is authenticated
 const user = getAuth().currentUser;
 if (user) {
@@ -51,7 +73,6 @@ if (user) {
     console.log(' AddUserDB 2error:', error);
     
 }
-        try {
             console.log('AddUserDB:', user.uid);
             // Prepare the user data for Firestore
             const payload = { username, phoneNumber, countryCode };
@@ -330,6 +351,75 @@ if (user) {
                                 </View>
                             </RadioButton.Group>
 
+                    {/* Conditionally render fields based on user type */}
+                    {userType === 'receptionist' && (
+                        <>
+                            <TextInput
+                                label="Organization"
+                                value={organization}
+                                onChangeText={setOrganization}
+                                style={styles.input}
+                                theme={{ colors: { primary: theme.colors.primary } }}
+                            />
+                            
+
+                                {/* Organization Type Dropdown */}
+                                <Button
+                                    mode="outlined"
+                                    onPress={() => setVisible(true)}
+                                    style={styles.input}
+                                >
+                                    {organizationType || 'Select Organization Type'}
+                                </Button>
+
+                                <Menu
+                                    visible={visible}
+                                    onDismiss={() => setVisible(false)}
+                                    anchor={<Text>{organizationType || 'Select Organization Type'}</Text>}
+                                >
+                                    {organizationTypes.map((type, index) => (
+                                        <Menu.Item
+                                            key={index}
+                                            onPress={() => handleSelectOrganizationType(type)}
+                                            title={type}
+                                        />
+                                    ))}
+                                </Menu>
+                            <TextInput
+                                label="Job ID"
+                                value={jobId}
+                                onChangeText={setJobId}
+                                style={styles.input}
+                                theme={{ colors: { primary: theme.colors.primary } }}
+                            />
+                        </>
+                    )}
+
+                    {userType === 'serviceProvider' && (
+                        <>
+                            <TextInput
+                                label="Profession"
+                                value={profession}
+                                onChangeText={setProfession}
+                                style={styles.input}
+                                theme={{ colors: { primary: theme.colors.primary } }}
+                            />
+                            <TextInput
+                                label="Specialization"
+                                value={specialization}
+                                onChangeText={setSpecialization}
+                                style={styles.input}
+                                theme={{ colors: { primary: theme.colors.primary } }}
+                            />
+                            <TextInput
+                                label="Availability Hours"
+                                value={availabilityHours}
+                                onChangeText={setAvailabilityHours}
+                                style={styles.input}
+                                theme={{ colors: { primary: theme.colors.primary } }}
+                            />
+                        </>
+                    )}
                             {/* Buttons */}
                             {!otpSent ? (
                                 <Button mode="contained" onPress={handleSendOTP} style={styles.button}>
