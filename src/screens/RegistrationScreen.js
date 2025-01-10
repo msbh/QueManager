@@ -7,6 +7,8 @@ import { getAuth, createUserWithEmailAndPassword, signInWithPhoneNumber, signInW
 import theme from '../theme/theme'; // Import the shared theme
 import { parsePhoneNumber } from 'libphonenumber-js';
 import { Menu } from 'react-native-paper'; // Import Menu from react-native-paper
+import { useNavigation } from '@react-navigation/native'; // For navigation
+import { logoutUser } from '../redux/actions';  // Import logout action
 
 const RegistrationScreen = ({ navigation }) => {
     const [username, setUsername] = useState('');
@@ -64,8 +66,8 @@ const handleSelectOrganizationType = (type) => {
         try {
             try {
             // Check if the user is authenticated
-const user = getAuth().currentUser;
-if (user) {
+const usercheck = getAuth().currentUser;
+if (usercheck) {
   console.log('User is signed in');
 } else {
   console.log('User is not signed in');
