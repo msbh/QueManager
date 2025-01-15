@@ -79,6 +79,7 @@ const RegistrationScreen = ({ navigation }) => {
   ];
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
+  const [limit, setLimit] = useState("");
   const [selectedDays, setSelectedDays] = useState([]);
   const [availabilityHours, setAvailabilityHours] = useState([]);
 
@@ -332,10 +333,11 @@ const RegistrationScreen = ({ navigation }) => {
   };
 
   const handleAddAvailability = () => {
-    if (startTime && endTime && selectedDays.length > 0) {
+    if (startTime && endTime && limit && selectedDays.length > 0) {
       const newAvailability = {
         from: startTime,
         to: endTime,
+        limit: limit,
         days: selectedDays,
       };
       setAvailabilityHours([...availabilityHours, newAvailability]);
@@ -538,6 +540,7 @@ const RegistrationScreen = ({ navigation }) => {
                     style={styles.input}
                     theme={{ colors: { primary: theme.colors.primary } }}
                   />
+
                   <TextInput
                     label="Availability Hours"
                     value={availabilityHours}
@@ -560,6 +563,14 @@ const RegistrationScreen = ({ navigation }) => {
                       label="To (24hr format)"
                       value={endTime}
                       onChangeText={setEndTime}
+                      keyboardType="numeric"
+                      style={styles.inputTime}
+                      theme={{ colors: { primary: theme.colors.primary } }}
+                    />
+                    <TextInput
+                      label="Limit"
+                      value={limit}
+                      onChangeText={setLimit}
                       keyboardType="numeric"
                       style={styles.inputTime}
                       theme={{ colors: { primary: theme.colors.primary } }}
