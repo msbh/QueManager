@@ -14,7 +14,7 @@ import { getAuth, signOut } from "firebase/auth";
 import { useNavigation } from "@react-navigation/native"; // For navigation to other screens
 import { useDispatch, useSelector } from "react-redux";
 import { logoutUser } from "../redux/actions";
-import { Card, Button } from "react-native-paper"; // Import Card and Button from react-native-paper
+import { Card, Button, Snackbar } from "react-native-paper"; // Import Card and Button from react-native-paper
 
 const ServiceProviderDashboard = ({ navigation }) => {
   const [queues, setQueues] = useState([]);
@@ -27,16 +27,20 @@ const ServiceProviderDashboard = ({ navigation }) => {
 
   const dispatch = useDispatch();
   const user = useSelector((state) => state.user);
+  const [snackbarVisible, setSnackbarVisible] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState("");
 
   const handleLogout = async () => {
     try {
       await signOut(auth);
-      alert("Logged out successfully");
+      setSnackbarMessage("Logged out successfully");
+      setSnackbarVisible(true);
       dispatch(logoutUser()); // Dispatch logout action
       navigation.navigate("LoginScreen"); // Redirect to login screen
     } catch (error) {
       console.error("Error logging out:", error);
-      alert("Failed to log out. Please try again.");
+      setSnackbarMessage("Failed to log out. Please try again.");
+      setSnackbarVisible(true);
     }
   };
 
@@ -57,10 +61,22 @@ const ServiceProviderDashboard = ({ navigation }) => {
       console.error("time", new Date(new Date().setHours(0, 0, 0, 0)));
       console.error("time to", new Date(new Date().setHours(23, 59, 59, 999)));
       const querySnapshot = await getDocs(q);
-      const queueData = querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
+      const queueData = await Promise.all(
+        querySnapshot.docs.map(async (doc) => {
+          const queue = doc.data();
+          const userQuery = query(
+            collection(db, "users"),
+            where("phoneNumber", "==", queue.patientMobile)
+          );
+          const userSnapshot = await getDocs(userQuery);
+          const userData = userSnapshot.docs[0]?.data();
+          return {
+            id: doc.id,
+            ...queue,
+            customerName: userData ? userData.username : "Unknown",
+          };
+        })
+      );
       setQueues(queueData);
 
       // Calculate metrics
@@ -96,80 +112,89 @@ const ServiceProviderDashboard = ({ navigation }) => {
     }
   };
   return (
-    <View style={{ padding: 20 }}>
-      <Text style={{ fontSize: 18 }}>Service Provider Dashboard</Text>
-      <Text style={{ marginTop: 10 }}>
-        Current Serving Queue Number:{" "}
-        {currentServing ? currentServing.queueNumber : "None"}
-      </Text>
-      <Text style={{ marginTop: 10 }}>
-        Upcoming Queue Number:{" "}
-        {upcomingQueue ? upcomingQueue.queueNumber : "None"}
-      </Text>
-      <Text style={{ marginTop: 10 }}>Total Served Today: {totalServed}</Text>
-      <Text style={{ marginTop: 10 }}>
-        Customer Left to Serve: {patientsLeft}
-      </Text>
-      <FlatList
-        data={queues}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <Card style={styles.card}>
-            <Card.Content>
-              <Text style={styles.cardTitle}>
-                Queue Number: {item.queueNumber}
-              </Text>
-              <Text>Queue Number: {item.queueNumber}</Text>
-              <Text>Customer Mobile: {item.patientMobile}</Text>
-              <Text>Status: {item.status}</Text>
-            </Card.Content>
-            <Card.Actions>
-              {item.status === "waiting" && (
-                <>
+    <ScrollView contentContainerStyle={styles.scrollContainer}>
+      <View style={{ padding: 20 }}>
+        <Text style={{ fontSize: 18 }}>Service Provider Dashboard</Text>
+        <Text style={{ marginTop: 10 }}>
+          Current Serving Queue Number:{" "}
+          {currentServing ? currentServing.queueNumber : "None"}
+        </Text>
+        <Text style={{ marginTop: 10 }}>
+          Upcoming Queue Number:{" "}
+          {upcomingQueue ? upcomingQueue.queueNumber : "None"}
+        </Text>
+        <Text style={{ marginTop: 10 }}>Total Served Today: {totalServed}</Text>
+        <Text style={{ marginTop: 10 }}>
+          Customer Left to Serve: {patientsLeft}
+        </Text>
+        <FlatList
+          data={queues}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <Card style={styles.card}>
+              <Card.Content>
+                <Text style={styles.cardTitle}>
+                  Queue Number: {item.queueNumber}
+                </Text>
+                <Text>Customer Name: {item.customerName}</Text>
+                <Text>Customer Mobile: {item.patientMobile}</Text>
+                <Text>Status: {item.status}</Text>
+              </Card.Content>
+              <Card.Actions>
+                {item.status === "waiting" && (
+                  <>
+                    <Button
+                      mode="contained"
+                      onPress={() => updateQueueStatus(item.id, "serving")}
+                      style={styles.servingButton}
+                    >
+                      Start Serving
+                    </Button>
+                    <Button
+                      mode="contained"
+                      onPress={() => updateQueueStatus(item.id, "missed")}
+                      style={styles.missedButton}
+                    >
+                      Mark as Missed
+                    </Button>
+                    <Button
+                      mode="contained"
+                      onPress={() => updateQueueStatus(item.id, "rejected")}
+                      style={styles.rejectedButton}
+                    >
+                      Reject
+                    </Button>
+                  </>
+                )}
+                {item.status === "serving" && (
                   <Button
                     mode="contained"
-                    onPress={() => updateQueueStatus(item.id, "serving")}
-                    style={styles.servingButton}
+                    onPress={() => updateQueueStatus(item.id, "served")}
+                    style={styles.servedButton}
                   >
-                    Start Serving
+                    Mark as Served
                   </Button>
-                  <Button
-                    mode="contained"
-                    onPress={() => updateQueueStatus(item.id, "missed")}
-                    style={styles.missedButton}
-                  >
-                    Mark as Missed
-                  </Button>
-                  <Button
-                    mode="contained"
-                    onPress={() => updateQueueStatus(item.id, "rejected")}
-                    style={styles.rejectedButton}
-                  >
-                    Reject
-                  </Button>
-                </>
-              )}
-              {item.status === "serving" && (
-                <Button
-                  mode="contained"
-                  onPress={() => updateQueueStatus(item.id, "served")}
-                  style={styles.servedButton}
-                >
-                  Mark as Served
-                </Button>
-              )}
-            </Card.Actions>
-          </Card>
-        )}
-      />
-      <Button
-        mode="contained"
-        onPress={handleLogout}
-        style={styles.logoutButton}
+                )}
+              </Card.Actions>
+            </Card>
+          )}
+        />
+        <Button
+          mode="contained"
+          onPress={handleLogout}
+          style={styles.logoutButton}
+        >
+          Logout
+        </Button>
+      </View>
+      <Snackbar
+        visible={snackbarVisible}
+        onDismiss={() => setSnackbarVisible(false)}
+        duration={3000}
       >
-        Logout
-      </Button>
-    </View>
+        {snackbarMessage}
+      </Snackbar>
+    </ScrollView>
   );
 };
 
