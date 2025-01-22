@@ -68,7 +68,17 @@ const RegistrationScreen = ({ navigation }) => {
     "Government Office",
     "Educational Institutions",
   ];
-  const daysOfWeek = [
+  const OrganizationTypem = [
+    { id: 1, Organizationname: "Hospitals" },
+    { id: 2, Organizationname: "Clinics" },
+    { id: 3, Organizationname: "Banks" },
+    { id: 4, Organizationname: "Restaurant" },
+    { id: 5, Organizationname: "Retail Stores" },
+    { id: 6, Organizationname: "Entertainment Venues" },
+    { id: 7, Organizationname: "Government Office" },
+    { id: 8, Organizationname: "Educational Institutions" },
+  ];
+  const NameOfWeek = [
     "Monday",
     "Tuesday",
     "Wednesday",
@@ -579,7 +589,7 @@ const RegistrationScreen = ({ navigation }) => {
                   <View>
                     <Text style={styles.subtitle}>Select Days</Text>
                     <View style={styles.daysRow}>
-                      {daysOfWeek.map((day) => (
+                      {NameOfWeek.map((day) => (
                         <View key={day} style={styles.checkboxContainer}>
                           <Checkbox
                             status={

@@ -111,7 +111,7 @@ const UserDashboard = () => {
 
   useEffect(() => {
     //   fetchQueues();
-    debugger;
+    // debugger;
     // Optionally, fetch userType from Firestore or Redux state if required
     // This is just an example; make sure to fetch it based on how you store it in your app
     const user = auth.currentUser;

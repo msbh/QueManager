@@ -6,6 +6,7 @@ import {
   Card,
   Title,
   Provider as PaperProvider,
+  Menu,
 } from "react-native-paper";
 import { Snackbar, RadioButton } from "react-native-paper";
 import { View, StyleSheet, ScrollView } from "react-native";
@@ -21,6 +22,7 @@ import {
 import theme from "../theme/theme";
 import { useDispatch, useSelector } from "react-redux";
 import { setUser, setUserType } from "../redux/actions";
+import { v4 as uuidv4 } from "uuid"; // Import the uuid library
 
 const ReceptionistScreen = ({ navigation }) => {
   const [doctorList, setDoctorList] = useState([]);
@@ -35,7 +37,10 @@ const ReceptionistScreen = ({ navigation }) => {
   const dispatch = useDispatch();
   const userstate = useSelector((state) => state.user);
   const userType = useSelector((state) => state.userType);
-  const [doctors, setDoctors] = useState([]);
+  const [menuVisible, setMenuVisible] = useState(false); // Added state for menu visibility
+  const [menuAnchor, setMenuAnchor] = useState({ x: 0, y: 0 }); // Added state for menu anchor
+  const [currentServingQueueNumber, setCurrentServingQueueNumber] =
+    useState(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -105,13 +110,32 @@ const ReceptionistScreen = ({ navigation }) => {
         id: doc.id,
         ...doc.data(),
       }));
-
-      // setDoctorList(doctors);
+      setDoctorList(doctorsList);
+      console.log("Fetched doctors:", doctorsList); // Debugging line to check fetched data
     } catch (error) {
       console.error("Error fetching doctors:", error);
     }
   };
-
+  const fetchCurrentServingQueueNumber = async (doctorId) => {
+    try {
+      const q = query(
+        collection(db, "queues"),
+        where("doctorId", "==", doctorId),
+        where("status", "==", "serving"),
+        where("time", ">=", new Date(new Date().setHours(0, 0, 0, 0))),
+        where("time", "<=", new Date(new Date().setHours(23, 59, 59, 999)))
+      );
+      const querySnapshot = await getDocs(q);
+      if (!querySnapshot.empty) {
+        const currentServing = querySnapshot.docs[0].data().queueNumber;
+        setCurrentServingQueueNumber(currentServing);
+      } else {
+        setCurrentServingQueueNumber(null);
+      }
+    } catch (error) {
+      console.error("Error fetching current serving queue number:", error);
+    }
+  };
   const addQueueEntry = async () => {
     if (!patientMobile || !selectedDoctor) {
       setSnackbarMessage(
@@ -121,12 +145,74 @@ const ReceptionistScreen = ({ navigation }) => {
       return;
     }
 
+    const doctor = doctorList.find((doc) => doc.id === selectedDoctor);
+    if (!doctor) {
+      setSnackbarMessage("Selected doctor not found");
+      setSnackbarVisible(true);
+      return;
+    }
+
+    const currentDay = new Date().toLocaleString("en-us", { weekday: "long" });
+    const currentTime = new Date().getHours();
+    let queueNumber = 0;
+    const availability = doctor.availabilityHours.find(
+      (avail) =>
+        avail.days.includes(currentDay) &&
+        currentTime >= parseInt(avail.from) &&
+        currentTime <= parseInt(avail.to)
+    );
+
+    if (!availability) {
+      setSnackbarMessage("Doctor is not available at this time");
+      setSnackbarVisible(true);
+      return;
+    }
+
     try {
+      const q = query(
+        collection(db, "queues"),
+        where("doctorId", "==", selectedDoctor),
+        where("status", "==", "waiting"),
+        where("time", ">=", new Date(new Date().setHours(0, 0, 0, 0))),
+        where("time", "<=", new Date(new Date().setHours(23, 59, 59, 999)))
+      );
+      const querySnapshot = await getDocs(q);
+      const queueCount = querySnapshot.size;
+
+      // Check for duplicate patient mobile number
+      const duplicate = querySnapshot.docs.some(
+        (doc) => doc.data().patientMobile === patientMobile
+      );
+      if (duplicate) {
+        setSnackbarMessage(
+          "Patient with this mobile number is already in the queue"
+        );
+        setSnackbarVisible(true);
+        return;
+      }
+      if (queueCount >= availability.limit) {
+        setSnackbarMessage("Doctor's queue is full for this time slot");
+        setSnackbarVisible(true);
+        return;
+      }
+      queueNumber = queueCount + 1; // Calculate the next queue number
+    } catch (error) {
+      console.error("Error adding patient to the queue missing table:", error);
+      setSnackbarMessage("Failed to add patient to the queue table");
+      setSnackbarVisible(true);
+    }
+    try {
+      if (queueNumber === 0) {
+        queueNumber = 1;
+      }
       const payload = {
-        doctorId: selectedDoctor,
+        id: uuidv4(), // Generate a unique ID for the queue entry
+        doctorId: npm,
         patientMobile,
         time: new Date(),
         status: "waiting",
+        queueNumber, // Add the queue number to the payload
+        updatedTime: new Date(),
       };
       await addDoc(collection(db, "queues"), payload);
       setQueueAdded(true);
@@ -135,51 +221,58 @@ const ReceptionistScreen = ({ navigation }) => {
       setPatientMobile("");
       setSelectedDoctor("");
     } catch (error) {
-      console.error("Error adding to queue:", error);
+      console.error("Error adding patient to the queue:", error);
       setSnackbarMessage("Failed to add patient to the queue");
       setSnackbarVisible(true);
     }
   };
-
+  const handleMenuOpen = (event) => {
+    setMenuAnchor({ x: event.nativeEvent.pageX, y: event.nativeEvent.pageY });
+    setMenuVisible(true);
+  };
+  const handleDoctorSelect = (doctorId) => {
+    setSelectedDoctor(doctorId);
+    setMenuVisible(false);
+    fetchCurrentServingQueueNumber(doctorId);
+  };
   return (
     <PaperProvider theme={theme}>
       <ScrollView contentContainerStyle={styles.container}>
         {userLoggedIn ? (
           <>
             <Text style={styles.title}>Receptionist Dashboard</Text>
-            <Text style={styles.label}>Select Doctor</Text>
-            <View style={styles.dropdown}>
-              <Button
-                mode="outlined"
-                onPress={() => {}}
-                style={styles.dropdownButton}
-              >
-                {selectedDoctor ? selectedDoctor : "Select Doctor"}
-              </Button>
-              {doctorList.length > 0 && (
-                <View style={styles.dropdownMenu}>
-                  {doctorList.map((doctor) => (
-                    <Button
-                      key={doctor.id}
-                      mode="text"
-                      onPress={() => setSelectedDoctor(doctor.name)}
-                      style={styles.dropdownItem}
-                    >
-                      {doctor.name}
-                    </Button>
-                  ))}
-                </View>
-              )}
-            </View>
-            <Text style={styles.label}>Enter Patient Mobile Number</Text>
+            <Text style={styles.title}>Add Patient to Queue</Text>
             <TextInput
-              label="Enter Patient Mobile Number"
+              label="Patient Mobile Number"
               value={patientMobile}
               onChangeText={setPatientMobile}
               keyboardType="phone-pad"
               style={styles.input}
             />
 
+            <Button onPress={handleMenuOpen}>
+              {selectedDoctor
+                ? doctorList.find((doc) => doc.id === selectedDoctor)?.username
+                : "Select Doctor"}
+            </Button>
+            <Menu
+              visible={menuVisible}
+              onDismiss={() => setMenuVisible(false)}
+              anchor={menuAnchor}
+            >
+              {doctorList.map((doctor) => (
+                <Menu.Item
+                  key={doctor.id}
+                  onPress={() => handleDoctorSelect(doctor.id)}
+                  title={doctor.username}
+                />
+              ))}
+            </Menu>
+            {selectedDoctor && currentServingQueueNumber !== null && (
+              <Text style={styles.currentServing}>
+                Current Serving Queue Number: {currentServingQueueNumber}
+              </Text>
+            )}
             <Button
               mode="contained"
               onPress={addQueueEntry}
