@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, Button, FlatList } from "react-native";
+import { View, Text, StyleSheet, ScrollView, FlatList } from "react-native";
 import {
   getFirestore,
   collection,
@@ -11,20 +11,27 @@ import {
   increment,
 } from "firebase/firestore";
 import { getAuth, signOut } from "firebase/auth";
-import { useNavigation } from "@react-navigation/native"; // For navigation to other screens
 import { useDispatch } from "react-redux";
 import { logoutUser } from "../redux/actions"; // Import logout action
 import { useSelector } from "react-redux";
+import { Card, Button, Snackbar } from "react-native-paper"; // Import Card and Button from react-native-paper
 
-const UserDashboard = () => {
-  const [queues, setQueues] = useState([]);
-  //const [userType, setUserType] = useState('generalUser'); // Assuming you fetch userType on login
+const UserDashboard = ({ navigation }) => {
+  const [userQueue, setUserQueue] = useState(null);
+  const [currentServingQueueNumber, setCurrentServingQueueNumber] =
+    useState(null);
   const db = getFirestore();
   const auth = getAuth();
-  const navigation = useNavigation(); // Using React Navigation for redirection
+  const user = useSelector((state) => state.user);
   const dispatch = useDispatch();
   // Get the userType from Redux store
   const userType = useSelector((state) => state.userType); // Access userType from Redux
+
+  const [snackbarVisible, setSnackbarVisible] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState("");
+  useEffect(() => {
+    fetchUserQueue();
+  }, []);
 
   // Fetch user type from Firestore
   const checkUserType = async (user) => {
@@ -45,41 +52,45 @@ const UserDashboard = () => {
       return "generalUser"; // Default type in case of error
     }
   };
-  // Fetch queues from Firestore
-  const fetchQueues = async () => {
+  const fetchUserQueue = async () => {
     try {
-      const snapshot = await getDocs(collection(db, "queues"));
-      const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-      setQueues(data);
+      const q = query(
+        collection(db, "queues"),
+        where("patientMobile", "==", user.phoneNumber),
+        where("status", "in", ["waiting", "serving"])
+      );
+      const querySnapshot = await getDocs(q);
+      if (!querySnapshot.empty) {
+        const userQueueData = querySnapshot.docs[0].data();
+        setUserQueue(userQueueData);
+        fetchCurrentServingQueueNumber(userQueueData.doctorId);
+      }
     } catch (error) {
-      console.error("Error fetching queues:", error);
+      console.error("Error fetching user queue:", error);
     }
   };
 
-  // Join a queue and increment the "total" count
-  const joinQueue = async (queueId) => {
+  const fetchCurrentServingQueueNumber = async (doctorId) => {
     try {
-      const queueRef = doc(db, "queues", queueId);
-      await updateDoc(queueRef, {
-        total: increment(1), // Increment the total field
-      });
-      alert("You have joined the queue!");
-      fetchQueues();
+      const q = query(
+        collection(db, "queues"),
+        where("doctorId", "==", doctorId),
+        where("status", "==", "serving"),
+        where("time", ">=", new Date(new Date().setHours(0, 0, 0, 0))),
+        where("time", "<=", new Date(new Date().setHours(23, 59, 59, 999)))
+      );
+      const querySnapshot = await getDocs(q);
+      if (!querySnapshot.empty) {
+        const currentServing = querySnapshot.docs[0].data().queueNumber;
+        setCurrentServingQueueNumber(currentServing);
+      } else {
+        setCurrentServingQueueNumber(null);
+      }
     } catch (error) {
-      console.error("Error joining the queue:", error);
+      console.error("Error fetching current serving queue number:", error);
     }
   };
-  // Handle user redirection based on userType
-  /*  const handleNavigation = (type) => {
-        if (type === 'receptionist') {
-            navigation.navigate('ReceptionistScreen');
-        } else if (type === 'serviceProvider') {
-            navigation.navigate('ServiceProviderDashboard');
-        } else {
-            // Default navigation for general user
-            navigation.navigate('UserDashboard');
-        }
-    };*/
+
   // Handle user redirection based on userType
   const handleNavigation = async () => {
     const user = auth.currentUser;
@@ -109,39 +120,62 @@ const UserDashboard = () => {
     }
   };
 
-  useEffect(() => {
-    //   fetchQueues();
-    // debugger;
-    // Optionally, fetch userType from Firestore or Redux state if required
-    // This is just an example; make sure to fetch it based on how you store it in your app
-    const user = auth.currentUser;
-    if (user) {
-      handleNavigation();
-      // Assuming the userType is stored in Firestore
-      // Fetch userType from Firestore and update state
-      // setUserType(fetchedUserType);
-    }
-  }, []);
-
   return (
-    <View style={{ padding: 20 }}>
-      <Text style={{ fontSize: 18 }}>User Dashboard</Text>
-      <FlatList
-        data={queues}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <View style={{ marginVertical: 10 }}>
-            <Text>
-              {item.name} - Current: {item.current} / Total: {item.total}
-            </Text>
-            <Button title="Join Queue" onPress={() => joinQueue(item.id)} />
-          </View>
+    <ScrollView contentContainerStyle={styles.scrollContainer}>
+      <View style={{ padding: 20 }}>
+        <Text style={{ fontSize: 18 }}>User Dashboard</Text>
+        {userQueue ? (
+          <Card style={styles.card}>
+            <Card.Content>
+              <Text style={styles.cardTitle}>
+                Your Queue Number: {userQueue.queueNumber}
+              </Text>
+              <Text>Service Provider: {userQueue.doctorId}</Text>
+              <Text>
+                Current Serving Queue Number:{" "}
+                {currentServingQueueNumber !== null
+                  ? currentServingQueueNumber
+                  : "None"}
+              </Text>
+            </Card.Content>
+          </Card>
+        ) : (
+          <Text style={{ marginTop: 20 }}>
+            You have not taken any queue number.
+          </Text>
         )}
-      />
-      {/* Add logout button */}
-      <Button title="Logout" onPress={handleLogout} style={{ marginTop: 20 }} />
-    </View>
+        {/* Add logout button */}
+        <Button
+          title="Logout"
+          onPress={handleLogout}
+          style={{ marginTop: 20 }}
+        />
+      </View>{" "}
+      <Snackbar
+        visible={snackbarVisible}
+        onDismiss={() => setSnackbarVisible(false)}
+        duration={3000}
+      >
+        {snackbarMessage}
+      </Snackbar>
+    </ScrollView>
   );
 };
 
 export default UserDashboard;
+
+const styles = StyleSheet.create({
+  scrollContainer: {
+    flexGrow: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  card: {
+    marginVertical: 10,
+    width: "100%",
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+});
