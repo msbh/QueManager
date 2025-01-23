@@ -8,6 +8,7 @@ import {
   getDocs,
   doc,
   updateDoc,
+  deleteDoc,
   increment,
 } from "firebase/firestore";
 import { getAuth, signOut } from "firebase/auth";
@@ -29,6 +30,8 @@ const UserDashboard = ({ navigation }) => {
 
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState("");
+  const [doctorDetails, setDoctorDetails] = useState(null);
+
   useEffect(() => {
     fetchUserQueue();
   }, []);
@@ -54,16 +57,19 @@ const UserDashboard = ({ navigation }) => {
   };
   const fetchUserQueue = async () => {
     try {
+      const now = new Date();
       const q = query(
         collection(db, "queues"),
         where("patientMobile", "==", user.phoneNumber),
-        where("status", "in", ["waiting", "serving"])
+        where("status", "in", ["waiting", "serving", "missed"]),
+        where("time", ">=", now)
       );
       const querySnapshot = await getDocs(q);
       if (!querySnapshot.empty) {
         const userQueueData = querySnapshot.docs[0].data();
         setUserQueue(userQueueData);
         fetchCurrentServingQueueNumber(userQueueData.doctorId);
+        fetchDoctorDetails(userQueueData.doctorId);
       }
     } catch (error) {
       console.error("Error fetching user queue:", error);
@@ -91,6 +97,19 @@ const UserDashboard = ({ navigation }) => {
     }
   };
 
+  const fetchDoctorDetails = async (doctorId) => {
+    try {
+      const q = query(collection(db, "users"), where("uid", "==", doctorId));
+      const querySnapshot = await getDocs(q);
+      if (!querySnapshot.empty) {
+        const doctorData = querySnapshot.docs[0].data();
+        setDoctorDetails(doctorData);
+      }
+    } catch (error) {
+      console.error("Error fetching doctor details:", error);
+    }
+  };
+
   // Handle user redirection based on userType
   const handleNavigation = async () => {
     const user = auth.currentUser;
@@ -111,7 +130,9 @@ const UserDashboard = ({ navigation }) => {
   const handleLogout = async () => {
     try {
       await signOut(auth);
-      alert("Logged out successfully");
+
+      setSnackbarMessage("Logged out successfully");
+      setSnackbarVisible(true);
       dispatch(logoutUser()); // Dispatch logout action
       navigation.navigate("LoginScreen"); // Redirect to login screen
     } catch (error) {
@@ -119,37 +140,82 @@ const UserDashboard = ({ navigation }) => {
       alert("Failed to log out. Please try again.");
     }
   };
+  const formatTime = (timestamp) => {
+    const date = timestamp.toDate();
+    return date.toLocaleString();
+  };
+
+  const handleQuitQueue = async () => {
+    try {
+      if (userQueue) {
+        const queueDoc = doc(db, "queues", userQueue.id);
+        await deleteDoc(queueDoc);
+        setUserQueue(null);
+        setSnackbarMessage("You have successfully quit the queue.");
+        setSnackbarVisible(true);
+      }
+    } catch (error) {
+      console.error("Error quitting the queue:", error);
+      setSnackbarMessage("Failed to quit the queue. Please try again.");
+      setSnackbarVisible(true);
+    }
+  };
 
   return (
     <ScrollView contentContainerStyle={styles.scrollContainer}>
       <View style={{ padding: 20 }}>
-        <Text style={{ fontSize: 18 }}>User Dashboard</Text>
+        <Text style={{ fontSize: 18 }}>{user.username} Dashboard</Text>
         {userQueue ? (
           <Card style={styles.card}>
             <Card.Content>
               <Text style={styles.cardTitle}>
                 Your Queue Number: {userQueue.queueNumber}
               </Text>
-              <Text>Service Provider: {userQueue.doctorId}</Text>
+              <Text>
+                Service Provider:{" "}
+                {doctorDetails ? doctorDetails.username : "Loading..."}
+              </Text>
+              <Text>
+                Organization:{" "}
+                {doctorDetails ? doctorDetails.organization : "Loading..."}
+              </Text>
+              <Text>
+                Type:{" "}
+                {doctorDetails ? doctorDetails.organizationType : "Loading..."}
+              </Text>
               <Text>
                 Current Serving Queue Number:{" "}
                 {currentServingQueueNumber !== null
                   ? currentServingQueueNumber
                   : "None"}
               </Text>
+              <Text>
+                Number initiated:{" "}
+                {userQueue.time ? formatTime(userQueue.time) : "Unknown"}
+              </Text>
             </Card.Content>
+            <Card.Actions>
+              <Button
+                mode="contained"
+                onPress={handleQuitQueue}
+                style={styles.quitButton}
+              >
+                Quit Queue
+              </Button>
+            </Card.Actions>
           </Card>
         ) : (
           <Text style={{ marginTop: 20 }}>
             You have not taken any queue number.
           </Text>
         )}
-        {/* Add logout button */}
         <Button
-          title="Logout"
+          mode="contained"
           onPress={handleLogout}
-          style={{ marginTop: 20 }}
-        />
+          style={styles.logoutButton}
+        >
+          Logout
+        </Button>
       </View>{" "}
       <Snackbar
         visible={snackbarVisible}
@@ -177,5 +243,8 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: 16,
     fontWeight: "bold",
+  },
+  logoutButton: {
+    marginTop: 20,
   },
 });

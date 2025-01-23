@@ -8,6 +8,7 @@ import {
   Card,
   Title,
   Provider as PaperProvider,
+  Snackbar,
 } from "react-native-paper";
 import {
   getAuth,
@@ -27,6 +28,8 @@ const LoginScreen = () => {
   const auth = getAuth();
   const dispatch = useDispatch(); // Use dispatch to send actions to Redux
   const navigation = useNavigation(); // Using React Navigation for redirection
+  const [snackbarVisible, setSnackbarVisible] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState("");
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -64,7 +67,9 @@ const LoginScreen = () => {
       const querySnapshot = await getDocs(q);
 
       if (querySnapshot?.empty) {
-        alert("User not found in the database");
+        // alert("User not found in the database");
+        setSnackbarMessage("User not found in the database");
+        setSnackbarVisible(true);
       } else {
         const userDoc = querySnapshot.docs[0].data();
         console.log("User Data from Firestore:", userDoc);
@@ -75,11 +80,18 @@ const LoginScreen = () => {
     } catch (error) {
       console.error("Error logging in:", error);
       if (error.code === "auth/invalid-email") {
-        alert("The email address is not valid or has not been registered.");
+        setSnackbarMessage(
+          "The email address is not valid or has not been registered."
+        );
+        setSnackbarVisible(true);
       } else if (error.code === "auth/user-not-found") {
-        alert("No user found with that mobile number.");
+        //alert("No user found with that mobile number.");
+        setSnackbarMessage("No user found with that mobile number.");
+        setSnackbarVisible(true);
       } else {
-        alert("Invalid credentials, please try again");
+        //alert("Invalid credentials, please try again");
+        setSnackbarMessage("Invalid credentials, please try again");
+        setSnackbarVisible(true);
       }
     } finally {
       setLoading(false);
@@ -134,6 +146,14 @@ const LoginScreen = () => {
           </Card.Content>
         </Card>
       </View>
+
+      <Snackbar
+        visible={snackbarVisible}
+        onDismiss={() => setSnackbarVisible(false)}
+        duration={3000}
+      >
+        {snackbarMessage}
+      </Snackbar>
     </PaperProvider>
   );
 };
