@@ -16,84 +16,60 @@ import { useDispatch } from "react-redux";
 import { logoutUser } from "../redux/actions"; // Import logout action
 import { useSelector } from "react-redux";
 import { Card, Button, Snackbar } from "react-native-paper"; // Import Card and Button from react-native-paper
+import { QUEUE_STATUSES } from "../constants/constants"; // Import queue statuses
 
 const UserDashboard = ({ navigation }) => {
-  const [userQueue, setUserQueue] = useState(null);
-  const [currentServingQueueNumber, setCurrentServingQueueNumber] =
-    useState(null);
+  const [userQueues, setUserQueues] = useState([]);
+  const [currentServingQueueNumbers, setCurrentServingQueueNumbers] = useState(
+    {}
+  );
   const db = getFirestore();
   const auth = getAuth();
   const user = useSelector((state) => state.user);
   const dispatch = useDispatch();
-  // Get the userType from Redux store
-  const userType = useSelector((state) => state.userType); // Access userType from Redux
 
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState("");
   const [doctorDetails, setDoctorDetails] = useState(null);
 
   useEffect(() => {
-    fetchUserQueue();
+    fetchUserQueues();
   }, []);
 
-  // Fetch user type from Firestore
-  const checkUserType = async (user) => {
-    try {
-      const userRef = collection(db, "users");
-      const q = query(userRef, where("uid", "==", user.uid));
-      const querySnapshot = await getDocs(q);
-
-      if (!querySnapshot.empty) {
-        const userDoc = querySnapshot.docs[0].data();
-        return userDoc.userType; // Get the user type (e.g., 'receptionist' or 'generalUser')
-      } else {
-        // Return a default user type if the user is not found in the database
-        return "generalUser";
-      }
-    } catch (error) {
-      console.error("Error fetching user type:", error);
-      return "generalUser"; // Default type in case of error
-    }
-  };
-  const fetchUserQueue = async () => {
+  const fetchUserQueues = async () => {
     try {
       const now = new Date();
+      now.setHours(0, 0, 0, 0); // Set to the start of the current day
       const q = query(
         collection(db, "queues"),
         where("patientMobile", "==", user.phoneNumber),
-        where("status", "in", ["waiting", "serving", "missed"]),
+        where("status", "in", [
+          QUEUE_STATUSES.WAITING,
+          QUEUE_STATUSES.SERVING,
+          QUEUE_STATUSES.MISSED,
+          QUEUE_STATUSES.REJECTED,
+        ]),
         where("time", ">=", now)
       );
       const querySnapshot = await getDocs(q);
       if (!querySnapshot.empty) {
-        const userQueueData = querySnapshot.docs[0].data();
-        setUserQueue(userQueueData);
-        fetchCurrentServingQueueNumber(userQueueData.doctorId);
-        fetchDoctorDetails(userQueueData.doctorId);
+        const queues = await Promise.all(
+          querySnapshot.docs.map(async (doc) => {
+            const queueData = doc.data();
+            const doctorData = await fetchDoctorDetails(queueData.doctorId);
+            const currentServingQueueNumber =
+              await fetchCurrentServingQueueNumber(queueData.doctorId);
+            return {
+              ...queueData,
+              doctorDetails: doctorData,
+              currentServingQueueNumber,
+            };
+          })
+        );
+        setUserQueues(queues);
       }
     } catch (error) {
-      console.error("Error fetching user queue:", error);
-    }
-  };
-
-  const fetchCurrentServingQueueNumber = async (doctorId) => {
-    try {
-      const q = query(
-        collection(db, "queues"),
-        where("doctorId", "==", doctorId),
-        where("status", "==", "serving"),
-        where("time", ">=", new Date(new Date().setHours(0, 0, 0, 0))),
-        where("time", "<=", new Date(new Date().setHours(23, 59, 59, 999)))
-      );
-      const querySnapshot = await getDocs(q);
-      if (!querySnapshot.empty) {
-        const currentServing = querySnapshot.docs[0].data().queueNumber;
-        setCurrentServingQueueNumber(currentServing);
-      } else {
-        setCurrentServingQueueNumber(null);
-      }
-    } catch (error) {
-      console.error("Error fetching current serving queue number:", error);
+      console.error("Error fetching user queues:", error);
     }
   };
 
@@ -102,28 +78,30 @@ const UserDashboard = ({ navigation }) => {
       const q = query(collection(db, "users"), where("uid", "==", doctorId));
       const querySnapshot = await getDocs(q);
       if (!querySnapshot.empty) {
-        const doctorData = querySnapshot.docs[0].data();
-        setDoctorDetails(doctorData);
+        return querySnapshot.docs[0].data();
       }
     } catch (error) {
       console.error("Error fetching doctor details:", error);
     }
+    return null;
   };
-
-  // Handle user redirection based on userType
-  const handleNavigation = async () => {
-    const user = auth.currentUser;
-    const type = await checkUserType(user);
-
-    // const type= checkUserType(userType);
-    // setUserType(type);
-    if (type === "receptionist") {
-      navigation.navigate("ReceptionistScreen");
-    } else if (type === "serviceProvider") {
-      navigation.navigate("ServiceProviderDashboard");
-    } else {
-      // navigation.navigate('UserDashboard'); // Default navigation
+  const fetchCurrentServingQueueNumber = async (doctorId) => {
+    try {
+      const q = query(
+        collection(db, "queues"),
+        where("doctorId", "==", doctorId),
+        where("status", "==", QUEUE_STATUSES.SERVING),
+        where("time", ">=", new Date(new Date().setHours(0, 0, 0, 0))),
+        where("time", "<=", new Date(new Date().setHours(23, 59, 59, 999)))
+      );
+      const querySnapshot = await getDocs(q);
+      if (!querySnapshot.empty) {
+        return querySnapshot.docs[0].data().queueNumber;
+      }
+    } catch (error) {
+      console.error("Error fetching current serving queue number:", error);
     }
+    return "None";
   };
 
   // Log out the user
@@ -145,15 +123,13 @@ const UserDashboard = ({ navigation }) => {
     return date.toLocaleString();
   };
 
-  const handleQuitQueue = async () => {
+  const handleQuitQueue = async (queueId) => {
     try {
-      if (userQueue) {
-        const queueDoc = doc(db, "queues", userQueue.id);
-        await deleteDoc(queueDoc);
-        setUserQueue(null);
-        setSnackbarMessage("You have successfully quit the queue.");
-        setSnackbarVisible(true);
-      }
+      const queueDoc = doc(db, "queues", queueId);
+      await deleteDoc(queueDoc);
+      setUserQueues(userQueues.filter((queue) => queue.id !== queueId));
+      setSnackbarMessage("You have successfully quit the queue.");
+      setSnackbarVisible(true);
     } catch (error) {
       console.error("Error quitting the queue:", error);
       setSnackbarMessage("Failed to quit the queue. Please try again.");
@@ -164,46 +140,62 @@ const UserDashboard = ({ navigation }) => {
   return (
     <ScrollView contentContainerStyle={styles.scrollContainer}>
       <View style={{ padding: 20 }}>
-        <Text style={{ fontSize: 18 }}>{user.username} Dashboard</Text>
-        {userQueue ? (
-          <Card style={styles.card}>
-            <Card.Content>
-              <Text style={styles.cardTitle}>
-                Your Queue Number: {userQueue.queueNumber}
-              </Text>
-              <Text>
-                Service Provider:{" "}
-                {doctorDetails ? doctorDetails.username : "Loading..."}
-              </Text>
-              <Text>
-                Organization:{" "}
-                {doctorDetails ? doctorDetails.organization : "Loading..."}
-              </Text>
-              <Text>
-                Type:{" "}
-                {doctorDetails ? doctorDetails.organizationType : "Loading..."}
-              </Text>
-              <Text>
-                Current Serving Queue Number:{" "}
-                {currentServingQueueNumber !== null
-                  ? currentServingQueueNumber
-                  : "None"}
-              </Text>
-              <Text>
-                Number initiated:{" "}
-                {userQueue.time ? formatTime(userQueue.time) : "Unknown"}
-              </Text>
-            </Card.Content>
-            <Card.Actions>
-              <Button
-                mode="contained"
-                onPress={handleQuitQueue}
-                style={styles.quitButton}
-              >
-                Quit Queue
-              </Button>
-            </Card.Actions>
-          </Card>
+        <Text style={{ fontSize: 18 }}>
+          {user ? user.username : "User "} Dashboard
+        </Text>
+        {userQueues.length > 0 ? (
+          userQueues.map((queue) => (
+            <Card key={queue.id} style={styles.card}>
+              <Card.Content>
+                {queue.currentServingQueueNumber === queue.queueNumber && (
+                  <Text style={styles.turnNow}>It's Your Turn Now</Text>
+                )}
+                <Text style={styles.cardTitle}>
+                  Your Queue Number: {queue.queueNumber}
+                </Text>
+                <Text>
+                  Service Provider:{" "}
+                  {queue.doctorDetails
+                    ? queue.doctorDetails.username
+                    : "Loading..."}
+                </Text>
+
+                <Text>
+                  Organization:{" "}
+                  {queue.doctorDetails
+                    ? queue.doctorDetails.organization
+                    : "Loading..."}
+                </Text>
+                <Text>
+                  Type:{" "}
+                  {queue.doctorDetails
+                    ? queue.doctorDetails.organizationType
+                    : "Loading..."}
+                </Text>
+                <Text>
+                  Current Serving Queue Number:{" "}
+                  {queue.currentServingQueueNumber !== null
+                    ? queue.currentServingQueueNumber
+                    : "None"}
+                </Text>
+                <Text>
+                  Number initiated:{" "}
+                  {queue.time ? formatTime(queue.time) : "Unknown"}
+                </Text>
+              </Card.Content>
+              <Card.Actions>
+                {queue.status !== "served" && (
+                  <Button
+                    mode="contained"
+                    onPress={() => handleQuitQueue(queue.id)}
+                    style={styles.quitButton}
+                  >
+                    Quit Queue
+                  </Button>
+                )}
+              </Card.Actions>
+            </Card>
+          ))
         ) : (
           <Text style={{ marginTop: 20 }}>
             You have not taken any queue number.
@@ -216,7 +208,7 @@ const UserDashboard = ({ navigation }) => {
         >
           Logout
         </Button>
-      </View>{" "}
+      </View>
       <Snackbar
         visible={snackbarVisible}
         onDismiss={() => setSnackbarVisible(false)}
@@ -246,5 +238,13 @@ const styles = StyleSheet.create({
   },
   logoutButton: {
     marginTop: 20,
+  },
+  turnNow: {
+    fontSize: 20,
+    color: "green",
+    fontWeight: "bold",
+    marginTop: 10,
+    justifyContent: "center",
+    alignItems: "center",
   },
 });

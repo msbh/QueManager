@@ -46,13 +46,14 @@ const ReceptionistScreen = ({ navigation }) => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setUserLoggedIn(true);
-        checkUserType(user);
+        dispatch(setUser(user));
       } else {
         setUserLoggedIn(false);
         navigation.navigate("LoginScreen");
       }
     });
 
+    fetchDoctorList();
     return () => unsubscribe();
   }, []);
 
@@ -95,7 +96,6 @@ const ReceptionistScreen = ({ navigation }) => {
 
   const fetchDoctorList = async (user) => {
     try {
-      debugger;
       const q = query(
         collection(db, "users"),
         where("userType", "==", "serviceProvider"),
@@ -126,8 +126,12 @@ const ReceptionistScreen = ({ navigation }) => {
         where("time", "<=", new Date(new Date().setHours(23, 59, 59, 999)))
       );
       const querySnapshot = await getDocs(q);
+      console.error("qs", querySnapshot);
+      debugger;
       if (!querySnapshot.empty) {
         const currentServing = querySnapshot.docs[0].data().queueNumber;
+
+        console.error("currentServing", currentServing);
         setCurrentServingQueueNumber(currentServing);
       } else {
         setCurrentServingQueueNumber(null);
@@ -145,7 +149,7 @@ const ReceptionistScreen = ({ navigation }) => {
       return;
     }
 
-    const doctor = doctorList.find((doc) => doc.id === selectedDoctor);
+    const doctor = doctorList.find((doc) => doc.uid === selectedDoctor);
     if (!doctor) {
       setSnackbarMessage("Selected doctor not found");
       setSnackbarVisible(true);
@@ -207,7 +211,7 @@ const ReceptionistScreen = ({ navigation }) => {
       }
       const payload = {
         id: uuidv4(), // Generate a unique ID for the queue entry
-        doctorId: npm,
+        doctorId: selectedDoctor,
         patientMobile,
         time: new Date(),
         status: "waiting",
@@ -240,57 +244,73 @@ const ReceptionistScreen = ({ navigation }) => {
       <ScrollView contentContainerStyle={styles.container}>
         {userLoggedIn ? (
           <>
-            <Text style={styles.title}>Receptionist Dashboard</Text>
-            <Text style={styles.title}>Add Patient to Queue</Text>
-            <TextInput
-              label="Patient Mobile Number"
-              value={patientMobile}
-              onChangeText={setPatientMobile}
-              keyboardType="phone-pad"
-              style={styles.input}
-            />
+            <Text style={styles.title}>
+              {" "}
+              {userstate ? userstate.username : "Receptionist "} Workspace
+            </Text>
 
-            <Button onPress={handleMenuOpen}>
-              {selectedDoctor
-                ? doctorList.find((doc) => doc.id === selectedDoctor)?.username
-                : "Select Doctor"}
-            </Button>
-            <Menu
-              visible={menuVisible}
-              onDismiss={() => setMenuVisible(false)}
-              anchor={menuAnchor}
-            >
-              {doctorList.map((doctor) => (
-                <Menu.Item
-                  key={doctor.id}
-                  onPress={() => handleDoctorSelect(doctor.id)}
-                  title={doctor.username}
+            <Card style={styles.card}>
+              <Card.Content>
+                <Text style={styles.cardTitle}>Add Patient to Queue</Text>
+
+                <TextInput
+                  label="Enter Cutomer Mobile Number"
+                  value={patientMobile}
+                  onChangeText={setPatientMobile}
+                  keyboardType="phone-pad"
                 />
-              ))}
-            </Menu>
-            {selectedDoctor && currentServingQueueNumber !== null && (
-              <Text style={styles.currentServing}>
-                Current Serving Queue Number: {currentServingQueueNumber}
-              </Text>
-            )}
+
+                <Button
+                  onPress={handleMenuOpen}
+                  mode="outlined"
+                  style={styles.selectDoctorButton}
+                  contentStyle={styles.selectDoctorButtonContent}
+                >
+                  {selectedDoctor
+                    ? doctorList.find((doc) => doc.uid === selectedDoctor)
+                        ?.username
+                    : "Select Doctor"}
+                </Button>
+                <Menu
+                  visible={menuVisible}
+                  onDismiss={() => setMenuVisible(false)}
+                  anchor={menuAnchor}
+                >
+                  {doctorList.map((doctor) => (
+                    <Menu.Item
+                      key={doctor.id}
+                      onPress={() => handleDoctorSelect(doctor.uid)}
+                      title={doctor.username}
+                    />
+                  ))}
+                </Menu>
+                {selectedDoctor && currentServingQueueNumber !== null && (
+                  <Text style={styles.currentServing}>
+                    Current Serving Queue Number: {currentServingQueueNumber}
+                  </Text>
+                )}
+                <Button
+                  mode="contained"
+                  onPress={addQueueEntry}
+                  style={styles.button}
+                >
+                  Add to Queue
+                </Button>
+
+                {queueAdded && (
+                  <Text style={styles.successMessage}>
+                    Customer added successfully to the queue!
+                  </Text>
+                )}
+              </Card.Content>
+            </Card>
             <Button
               mode="contained"
-              onPress={addQueueEntry}
-              style={styles.button}
-            >
-              Add to Queue
-            </Button>
-
-            {queueAdded && (
-              <Text style={styles.successMessage}>
-                Patient added successfully to the queue!
-              </Text>
-            )}
-            <Button
-              title="Logout"
               onPress={handleLogout}
-              style={{ marginTop: 20 }}
-            />
+              style={styles.logoutButton}
+            >
+              Logout
+            </Button>
           </>
         ) : (
           <Text>Please log in to access this screen</Text>
@@ -311,23 +331,26 @@ const ReceptionistScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
   },
   title: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: "bold",
-    marginBottom: 16,
+    marginBottom: 20,
   },
   label: {
     fontSize: 16,
     marginBottom: 8,
   },
   input: {
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "gray",
+    width: "100%",
     padding: 10,
-    backgroundColor: "#fff",
+    marginVertical: 10,
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 5,
   },
   button: {
     marginTop: 16,
@@ -347,6 +370,28 @@ const styles = StyleSheet.create({
   },
   dropdownItem: {
     paddingVertical: 8,
+  },
+  logoutButton: {
+    marginTop: 40,
+  },
+  currentServing: {
+    marginTop: 10,
+    fontSize: 16,
+  },
+  card: {
+    marginVertical: 10,
+    width: "100%",
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  selectDoctorButton: {
+    marginTop: 10,
+    marginBottom: 10,
+  },
+  selectDoctorButtonContent: {
+    justifyContent: "center",
   },
 });
 

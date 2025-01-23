@@ -42,9 +42,17 @@ const LoginScreen = () => {
           const userDoc = querySnapshot.docs[0].data();
           dispatch(setUser(userDoc)); // Dispatch user data to Redux
           dispatch(setUserType(userDoc.userType)); // Dispatch user data to Redux
-          navigation.navigate("UserDashboard"); // Navigate to User Dashboard
+          if (userDoc.userType === "receptionist") {
+            navigation.navigate("ReceptionistScreen");
+          } else if (userDoc.userType === "serviceProvider") {
+            navigation.navigate("ServiceProviderDashboard");
+          } else {
+            navigation.navigate("UserDashboard"); // Default navigation
+          }
         } else {
-          alert("User not found in the database");
+          //alert("User not found in the database");
+          setSnackbarMessage("User not found in the database");
+          setSnackbarVisible(true);
         }
       }
     });
@@ -57,9 +65,9 @@ const LoginScreen = () => {
     setLoading(true);
     try {
       const email = username + "@mobile.com"; // Construct email with mobile number
-      const password2 = "admin123"; // Static password (replace with real password if needed)
+      //const password2 = "admin123"; // Static password (replace with real password if needed)
 
-      const { user } = await signInWithEmailAndPassword(auth, email, password2);
+      const { user } = await signInWithEmailAndPassword(auth, email, password);
       console.log("User logged in:", user.email);
       console.log("UID from Firebase Authentication:", user?.uid);
 
@@ -75,7 +83,13 @@ const LoginScreen = () => {
         console.log("User Data from Firestore:", userDoc);
         dispatch(setUser(userDoc)); // Dispatch user data to Redux
         dispatch(setUserType(userDoc.userType)); // Dispatch user data to Redux
-        navigation.navigate("UserDashboard"); // Navigate to User Dashboard
+        if (userDoc.userType === "receptionist") {
+          navigation.navigate("ReceptionistScreen");
+        } else if (userDoc.userType === "serviceProvider") {
+          navigation.navigate("ServiceProviderDashboard");
+        } else {
+          navigation.navigate("UserDashboard"); // Default navigation
+        }
       }
     } catch (error) {
       console.error("Error logging in:", error);

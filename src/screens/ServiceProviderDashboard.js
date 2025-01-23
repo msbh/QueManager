@@ -114,7 +114,10 @@ const ServiceProviderDashboard = ({ navigation }) => {
   return (
     <ScrollView contentContainerStyle={styles.scrollContainer}>
       <View style={{ padding: 20 }}>
-        <Text style={{ fontSize: 18 }}>Service Provider Dashboard</Text>
+        <Text style={{ fontSize: 18 }}>
+          {" "}
+          {user ? user.username : "Service Provider "} Dashboard
+        </Text>
         <Text style={{ marginTop: 10 }}>
           Current Serving Queue Number:{" "}
           {currentServing ? currentServing.queueNumber : "None"}
