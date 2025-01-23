@@ -7,7 +7,7 @@ import {
   where,
   getDocs,
   doc,
-  updateDoc,
+  onSnapshot,
   deleteDoc,
   increment,
 } from "firebase/firestore";
@@ -33,25 +33,22 @@ const UserDashboard = ({ navigation }) => {
   const [doctorDetails, setDoctorDetails] = useState(null);
 
   useEffect(() => {
-    fetchUserQueues();
-  }, []);
+    const now = new Date();
+    now.setHours(0, 0, 0, 0); // Set to the start of the current day
+    const q = query(
+      collection(db, "queues"),
+      where("patientMobile", "==", user.phoneNumber),
+      where("status", "in", [
+        QUEUE_STATUSES.WAITING,
+        QUEUE_STATUSES.SERVED,
+        QUEUE_STATUSES.SERVING,
+        QUEUE_STATUSES.MISSED,
+        QUEUE_STATUSES.REJECTED,
+      ]),
+      where("time", ">=", now)
+    );
 
-  const fetchUserQueues = async () => {
-    try {
-      const now = new Date();
-      now.setHours(0, 0, 0, 0); // Set to the start of the current day
-      const q = query(
-        collection(db, "queues"),
-        where("patientMobile", "==", user.phoneNumber),
-        where("status", "in", [
-          QUEUE_STATUSES.WAITING,
-          QUEUE_STATUSES.SERVING,
-          QUEUE_STATUSES.MISSED,
-          QUEUE_STATUSES.REJECTED,
-        ]),
-        where("time", ">=", now)
-      );
-      const querySnapshot = await getDocs(q);
+    const unsubscribe = onSnapshot(q, async (querySnapshot) => {
       if (!querySnapshot.empty) {
         const queues = await Promise.all(
           querySnapshot.docs.map(async (doc) => {
@@ -67,11 +64,13 @@ const UserDashboard = ({ navigation }) => {
           })
         );
         setUserQueues(queues);
+      } else {
+        setUserQueues([]);
       }
-    } catch (error) {
-      console.error("Error fetching user queues:", error);
-    }
-  };
+    });
+
+    return () => unsubscribe();
+  }, [user.phoneNumber]);
 
   const fetchDoctorDetails = async (doctorId) => {
     try {
@@ -149,6 +148,15 @@ const UserDashboard = ({ navigation }) => {
               <Card.Content>
                 {queue.currentServingQueueNumber === queue.queueNumber && (
                   <Text style={styles.turnNow}>It's Your Turn Now</Text>
+                )}
+                {queue.status === QUEUE_STATUSES.SERVED && (
+                  <Text style={styles.turnNow}>Happy to Serve you</Text>
+                )}
+                {queue.status === QUEUE_STATUSES.MISSED && (
+                  <Text style={styles.turnNow}>Ops you Missed</Text>
+                )}
+                {queue.status === QUEUE_STATUSES.REJECTED && (
+                  <Text style={styles.reject}>Rejected ! </Text>
                 )}
                 <Text style={styles.cardTitle}>
                   Your Queue Number: {queue.queueNumber}
@@ -240,8 +248,16 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   turnNow: {
-    fontSize: 20,
+    fontSize: 17,
     color: "green",
+    fontWeight: "bold",
+    marginTop: 10,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  reject: {
+    fontSize: 17,
+    color: "red",
     fontWeight: "bold",
     marginTop: 10,
     justifyContent: "center",
