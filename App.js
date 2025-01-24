@@ -11,7 +11,11 @@ import AdminDashboard from "./src/screens/AdminDashboard";
 import UserDashboard from "./src/screens/UserDashboard";
 import ServiceProviderDashboard from "./src/screens/ServiceProviderDashboard";
 import ReceptionistScreen from "./src/screens/ReceptionistScreen";
+import AppNavigator from "./navigation/AppNavigator";
 
+const App = () => {
+  return <AppNavigator />;
+};
 const Stack = createNativeStackNavigator();
 
 export default function App() {
